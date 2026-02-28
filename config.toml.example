@@ -1,3 +1,8 @@
 [myskoda]
 username = "your-email@example.com"
 password = "your-password"
+
+[alphaess]
+appid = "your-app-id"
+appsecret = "your-app-secret"
+sn = "ALD007"

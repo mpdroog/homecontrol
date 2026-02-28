@@ -7,17 +7,25 @@ import (
 	"os"
 
 	"github.com/BurntSushi/toml"
+	"github.com/mpdroog/homecontrol/alphaess"
 	"github.com/mpdroog/homecontrol/myskoda"
 	"github.com/mpdroog/homecontrol/nordpool"
 )
 
 type Config struct {
-	MySkoda MySkodaConfig `toml:"myskoda"`
+	MySkoda  MySkodaConfig  `toml:"myskoda"`
+	AlphaESS AlphaESSConfig `toml:"alphaess"`
 }
 
 type MySkodaConfig struct {
 	Username string `toml:"username"`
 	Password string `toml:"password"`
+}
+
+type AlphaESSConfig struct {
+	AppID     string `toml:"appid"`
+	AppSecret string `toml:"appsecret"`
+	SN        string `toml:"sn"`
 }
 
 func usage() {
@@ -29,6 +37,7 @@ Commands:
   stop [VIN]          Stop charging (uses first vehicle if VIN not specified)
   limit [VIN] PCT     Set charge limit to PCT percent
   prices              Show hourly energy prices (today & tomorrow)
+  battery             Show AlphaESS home battery status
 
 Options:
 `)
@@ -59,6 +68,24 @@ func main() {
 		npClient := nordpool.NewClient()
 		npClient.SetDebug(*debug)
 		showPrices(npClient)
+		return
+	}
+
+	// Handle battery command (AlphaESS)
+	if cmd == "battery" {
+		if cfg.AlphaESS.AppID == "" || cfg.AlphaESS.AppSecret == "" {
+			fmt.Fprintln(os.Stderr, "Error: alphaess.appid and alphaess.appsecret must be set in config.toml")
+			os.Exit(1)
+		}
+		if *debug {
+			fmt.Printf("[DEBUG] AlphaESS config: appid=%s, sn=%s\n", cfg.AlphaESS.AppID, cfg.AlphaESS.SN)
+		}
+		aClient := alphaess.NewClient(cfg.AlphaESS.AppID, cfg.AlphaESS.AppSecret)
+		aClient.SetDebug(*debug)
+		if cfg.AlphaESS.SN != "" {
+			aClient.SetSN(cfg.AlphaESS.SN)
+		}
+		showBatteryStatus(aClient)
 		return
 	}
 
@@ -308,5 +335,80 @@ func showPrices(client *nordpool.Client) {
 	} else {
 		fmt.Printf("\n[Tomorrow]\n")
 		fmt.Printf("  Prices not yet available (typically published around 13:00 CET)\n")
+	}
+}
+
+func showBatteryStatus(client *alphaess.Client) {
+	fmt.Println("Fetching AlphaESS battery status...")
+
+	sn, err := client.GetSN()
+	if err != nil {
+		log.Fatalf("Failed to get system SN: %v", err)
+	}
+	fmt.Printf("Using system SN: %s\n", sn)
+
+	power, err := client.GetLastPowerData()
+	if err != nil {
+		log.Fatalf("Failed to get power data: %v", err)
+	}
+
+	fmt.Printf("\n=== AlphaESS Battery Status ===\n")
+	fmt.Printf("\n[Power]\n")
+	fmt.Printf("  SOC:            %.1f %%\n", power.SOC)
+	fmt.Printf("  Battery Power:  %.1f W", power.BatteryPower)
+	if power.BatteryPower > 0 {
+		fmt.Printf(" (charging)")
+	} else if power.BatteryPower < 0 {
+		fmt.Printf(" (discharging)")
+	}
+	fmt.Println()
+	fmt.Printf("  PV Power:       %.1f W\n", power.PVPower)
+	fmt.Printf("  Load Power:     %.1f W\n", power.LoadPower)
+	fmt.Printf("  Grid Power:     %.1f W", power.GridPower)
+	if power.GridPower > 0 {
+		fmt.Printf(" (importing)")
+	} else if power.GridPower < 0 {
+		fmt.Printf(" (exporting)")
+	}
+	fmt.Println()
+
+	// Get charge config
+	chargeConfig, err := client.GetChargeConfig()
+	if err != nil {
+		fmt.Printf("\n[Charge Config] Error: %v\n", err)
+	} else {
+		fmt.Printf("\n[Charge Config]\n")
+		if chargeConfig.GridCharge == 1 {
+			fmt.Printf("  Grid Charge:    Enabled\n")
+		} else {
+			fmt.Printf("  Grid Charge:    Disabled\n")
+		}
+		if chargeConfig.TimeChaf1 != "00:00" || chargeConfig.TimeChae1 != "00:00" {
+			fmt.Printf("  Period 1:       %s - %s\n", chargeConfig.TimeChaf1, chargeConfig.TimeChae1)
+		}
+		if chargeConfig.TimeChaf2 != "00:00" || chargeConfig.TimeChae2 != "00:00" {
+			fmt.Printf("  Period 2:       %s - %s\n", chargeConfig.TimeChaf2, chargeConfig.TimeChae2)
+		}
+		fmt.Printf("  High Cap:       %.0f %%\n", chargeConfig.BatHighCap)
+	}
+
+	// Get discharge config
+	dischargeConfig, err := client.GetDischargeConfig()
+	if err != nil {
+		fmt.Printf("\n[Discharge Config] Error: %v\n", err)
+	} else {
+		fmt.Printf("\n[Discharge Config]\n")
+		if dischargeConfig.CtrDis == 1 {
+			fmt.Printf("  Discharge:      Enabled\n")
+		} else {
+			fmt.Printf("  Discharge:      Disabled\n")
+		}
+		if dischargeConfig.TimeDisf1 != "00:00" || dischargeConfig.TimeDise1 != "00:00" {
+			fmt.Printf("  Period 1:       %s - %s\n", dischargeConfig.TimeDisf1, dischargeConfig.TimeDise1)
+		}
+		if dischargeConfig.TimeDisf2 != "00:00" || dischargeConfig.TimeDise2 != "00:00" {
+			fmt.Printf("  Period 2:       %s - %s\n", dischargeConfig.TimeDisf2, dischargeConfig.TimeDise2)
+		}
+		fmt.Printf("  Min SOC:        %.0f %%\n", dischargeConfig.BatUseCap)
 	}
 }
