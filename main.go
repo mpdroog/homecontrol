@@ -8,6 +8,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/mpdroog/homecontrol/myskoda"
+	"github.com/mpdroog/homecontrol/nordpool"
 )
 
 type Config struct {
@@ -27,6 +28,7 @@ Commands:
   start [VIN]         Start charging (uses first vehicle if VIN not specified)
   stop [VIN]          Stop charging (uses first vehicle if VIN not specified)
   limit [VIN] PCT     Set charge limit to PCT percent
+  prices              Show hourly energy prices (today & tomorrow)
 
 Options:
 `)
@@ -45,6 +47,22 @@ func main() {
 		log.Fatalf("Reading config %s: %v", *configPath, err)
 	}
 
+	// Parse command
+	args := flag.Args()
+	cmd := "status"
+	if len(args) > 0 {
+		cmd = args[0]
+	}
+
+	// Handle prices command separately (doesn't need MySkoda)
+	if cmd == "prices" {
+		npClient := nordpool.NewClient()
+		npClient.SetDebug(*debug)
+		showPrices(npClient)
+		return
+	}
+
+	// All other commands need MySkoda
 	if cfg.MySkoda.Username == "" || cfg.MySkoda.Password == "" {
 		fmt.Fprintln(os.Stderr, "Error: myskoda.username and myskoda.password must be set in config.toml")
 		os.Exit(1)
@@ -71,13 +89,6 @@ func main() {
 
 	if len(vehicles) == 0 {
 		log.Fatal("No vehicles found in your garage")
-	}
-
-	// Parse command
-	args := flag.Args()
-	cmd := "status"
-	if len(args) > 0 {
-		cmd = args[0]
 	}
 
 	// Helper to get VIN (from args or first vehicle)
@@ -231,5 +242,71 @@ func showStatus(client *myskoda.Client, vehicles []myskoda.Vehicle) {
 				fmt.Printf("  Warning Lights:  None active\n")
 			}
 		}
+	}
+}
+
+func showPrices(client *nordpool.Client) {
+	fmt.Println("Fetching energy prices from NordPool...")
+
+	prices, err := client.GetPrices()
+	if err != nil {
+		log.Fatalf("Failed to fetch prices: %v", err)
+	}
+
+	// Current and next hour prices
+	current := client.GetCurrentPrice(prices)
+	next := client.GetNextPrice(prices)
+	lowest := client.GetLowestPrice(prices)
+	highest := client.GetHighestPrice(prices)
+
+	fmt.Printf("\n=== Energy Prices ===\n")
+
+	if current != nil {
+		fmt.Printf("\n[Current Hour] %s\n", current.Period.Format("15:04"))
+		fmt.Printf("  Price:        %.2f EUR/MWh (%.4f EUR/kWh)\n", current.PriceEUR, current.PricePerKWh())
+	}
+
+	if next != nil {
+		fmt.Printf("\n[Next Hour] %s\n", next.Period.Format("15:04"))
+		fmt.Printf("  Price:        %.2f EUR/MWh (%.4f EUR/kWh)\n", next.PriceEUR, next.PricePerKWh())
+	}
+
+	if lowest != nil {
+		fmt.Printf("\n[Lowest Price] %s\n", lowest.Period.Format("Mon 15:04"))
+		fmt.Printf("  Price:        %.2f EUR/MWh (%.4f EUR/kWh)\n", lowest.PriceEUR, lowest.PricePerKWh())
+	}
+
+	if highest != nil {
+		fmt.Printf("\n[Highest Price] %s\n", highest.Period.Format("Mon 15:04"))
+		fmt.Printf("  Price:        %.2f EUR/MWh (%.4f EUR/kWh)\n", highest.PriceEUR, highest.PricePerKWh())
+	}
+
+	// Today's prices
+	if len(prices.Today) > 0 {
+		fmt.Printf("\n[Today - %s]\n", prices.Today[0].Period.Format("Mon 02 Jan"))
+		fmt.Printf("  %-5s  %12s  %12s\n", "Hour", "EUR/MWh", "EUR/kWh")
+		fmt.Printf("  %-5s  %12s  %12s\n", "-----", "------------", "------------")
+		for _, p := range prices.Today {
+			fmt.Printf("  %-5s  %12.2f  %12.4f\n",
+				p.Period.Format("15:04"),
+				p.PriceEUR,
+				p.PricePerKWh())
+		}
+	}
+
+	// Tomorrow's prices (if available)
+	if len(prices.Tomorrow) > 0 {
+		fmt.Printf("\n[Tomorrow - %s]\n", prices.Tomorrow[0].Period.Format("Mon 02 Jan"))
+		fmt.Printf("  %-5s  %12s  %12s\n", "Hour", "EUR/MWh", "EUR/kWh")
+		fmt.Printf("  %-5s  %12s  %12s\n", "-----", "------------", "------------")
+		for _, p := range prices.Tomorrow {
+			fmt.Printf("  %-5s  %12.2f  %12.4f\n",
+				p.Period.Format("15:04"),
+				p.PriceEUR,
+				p.PricePerKWh())
+		}
+	} else {
+		fmt.Printf("\n[Tomorrow]\n")
+		fmt.Printf("  Prices not yet available (typically published around 13:00 CET)\n")
 	}
 }
