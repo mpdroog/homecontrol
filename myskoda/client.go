@@ -36,10 +36,18 @@ type Client struct {
 	password     string
 }
 
+// Citigo e IV battery capacity (usable kWh)
+const BatteryCapacityKWh = 32.3
+
 // Battery contains the battery status.
 type Battery struct {
 	StateOfChargePercent int `json:"stateOfChargeInPercent"`
 	RemainingRangeMeters int `json:"remainingCruisingRangeInMeters"`
+}
+
+// EstimatedKWh returns estimated kWh based on percentage and Citigo battery capacity.
+func (b Battery) EstimatedKWh() float64 {
+	return float64(b.StateOfChargePercent) * BatteryCapacityKWh / 100.0
 }
 
 // ChargingStatus contains charging information.
@@ -68,6 +76,86 @@ type Vehicle struct {
 // GarageResponse is the response from the garage endpoint.
 type GarageResponse struct {
 	Vehicles []Vehicle `json:"vehicles"`
+}
+
+// VehicleStatus contains current vehicle status (doors, windows, lights, etc.)
+type VehicleStatus struct {
+	Doors   DoorsStatus   `json:"doors"`
+	Windows WindowsStatus `json:"windows"`
+	Lights  LightsStatus  `json:"lights"`
+	Mileage int           `json:"mileageInKm"`
+}
+
+type DoorsStatus struct {
+	Locked          bool `json:"locked"`
+	FrontLeft       bool `json:"frontLeft"`
+	FrontRight      bool `json:"frontRight"`
+	RearLeft        bool `json:"rearLeft"`
+	RearRight       bool `json:"rearRight"`
+	Trunk           bool `json:"trunk"`
+	Hood            bool `json:"hood"`
+	OverallStatus   string `json:"overallStatus"`
+}
+
+type WindowsStatus struct {
+	FrontLeft     string `json:"frontLeft"`
+	FrontRight    string `json:"frontRight"`
+	RearLeft      string `json:"rearLeft"`
+	RearRight     string `json:"rearRight"`
+	OverallStatus string `json:"overallStatus"`
+}
+
+type LightsStatus struct {
+	OverallStatus string `json:"overallStatus"`
+}
+
+// Position contains vehicle GPS position.
+type Position struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+	Address   string  `json:"address"`
+}
+
+type PositionResponse struct {
+	Positions []PositionEntry `json:"positions"`
+}
+
+type PositionEntry struct {
+	Type           string  `json:"type"`
+	Latitude       float64 `json:"latitude"`
+	Longitude      float64 `json:"longitude"`
+	Address        string  `json:"address"`
+	GPSCoordinates *struct {
+		Latitude  float64 `json:"latitude"`
+		Longitude float64 `json:"longitude"`
+	} `json:"gpsCoordinates"`
+}
+
+// AirConditioning contains AC status.
+type AirConditioning struct {
+	State                    string  `json:"state"`
+	TargetTemperatureCelsius float64 `json:"targetTemperatureInCelsius"`
+	ChargerConnected         string  `json:"chargerConnectionState"`
+	WindowHeatingEnabled     bool    `json:"windowHeatingEnabled"`
+	SteeringWheelPosition    string  `json:"steeringWheelPosition"`
+	Errors                   []struct {
+		Type        string `json:"type"`
+		Description string `json:"description"`
+	} `json:"errors"`
+}
+
+// Health contains vehicle health/warning info.
+type Health struct {
+	Mileage       int            `json:"mileageInKm"`
+	WarningLights []WarningLight `json:"warningLights"`
+}
+
+type WarningLight struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Category    string `json:"category"`
+	State       string `json:"state"`
+	Description string `json:"description"`
 }
 
 // csrfState holds the CSRF tokens extracted from the login page.
@@ -616,4 +704,155 @@ func (c *Client) GetCharging(vin string) (*Charging, error) {
 	}
 
 	return &charging, nil
+}
+
+// StartCharging starts charging for a vehicle.
+func (c *Client) StartCharging(vin string) error {
+	resp, err := c.doRequest("POST", "/api/v1/charging/"+vin+"/start", nil)
+	if err != nil {
+		return fmt.Errorf("starting charging: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("start charging failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// StopCharging stops charging for a vehicle.
+func (c *Client) StopCharging(vin string) error {
+	resp, err := c.doRequest("POST", "/api/v1/charging/"+vin+"/stop", nil)
+	if err != nil {
+		return fmt.Errorf("stopping charging: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("stop charging failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// SetChargeLimit sets the target state of charge percentage (e.g., 80 for 80%).
+func (c *Client) SetChargeLimit(vin string, percent int) error {
+	payload := map[string]int{"targetSOCInPercent": percent}
+	body, _ := json.Marshal(payload)
+
+	resp, err := c.doRequest("PUT", "/api/v1/charging/"+vin+"/set-charge-limit", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("setting charge limit: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("set charge limit failed with status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+// GetStatus returns vehicle status (doors, windows, mileage, etc.)
+func (c *Client) GetStatus(vin string) (*VehicleStatus, error) {
+	resp, err := c.doRequest("GET", "/api/v1/vehicle-status/"+vin, nil)
+	if err != nil {
+		return nil, fmt.Errorf("fetching vehicle status: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var status VehicleStatus
+	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+		return nil, fmt.Errorf("decoding status response: %w", err)
+	}
+
+	return &status, nil
+}
+
+// GetPosition returns the vehicle's current/last known position.
+func (c *Client) GetPosition(vin string) (*Position, error) {
+	resp, err := c.doRequest("GET", "/api/v1/maps/positions?vin="+vin, nil)
+	if err != nil {
+		return nil, fmt.Errorf("fetching position: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var posResp PositionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&posResp); err != nil {
+		return nil, fmt.Errorf("decoding position response: %w", err)
+	}
+
+	if len(posResp.Positions) == 0 {
+		return nil, nil
+	}
+
+	entry := posResp.Positions[0]
+	pos := &Position{Address: entry.Address}
+
+	// Handle both direct coordinates and nested gpsCoordinates
+	if entry.GPSCoordinates != nil {
+		pos.Latitude = entry.GPSCoordinates.Latitude
+		pos.Longitude = entry.GPSCoordinates.Longitude
+	} else {
+		pos.Latitude = entry.Latitude
+		pos.Longitude = entry.Longitude
+	}
+
+	return pos, nil
+}
+
+// GetAirConditioning returns AC/climate status.
+func (c *Client) GetAirConditioning(vin string) (*AirConditioning, error) {
+	resp, err := c.doRequest("GET", "/api/v2/air-conditioning/"+vin, nil)
+	if err != nil {
+		return nil, fmt.Errorf("fetching air conditioning: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var ac AirConditioning
+	if err := json.NewDecoder(resp.Body).Decode(&ac); err != nil {
+		return nil, fmt.Errorf("decoding AC response: %w", err)
+	}
+
+	return &ac, nil
+}
+
+// GetHealth returns vehicle health and warning lights.
+func (c *Client) GetHealth(vin string) (*Health, error) {
+	resp, err := c.doRequest("GET", "/api/v1/vehicle-health-report/warning-lights/"+vin, nil)
+	if err != nil {
+		return nil, fmt.Errorf("fetching health: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var health Health
+	if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
+		return nil, fmt.Errorf("decoding health response: %w", err)
+	}
+
+	return &health, nil
 }
