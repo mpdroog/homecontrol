@@ -438,343 +438,263 @@ func (s *Server) Run() error {
 }
 
 const dashboardTemplate = `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Home Control Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
-            padding: 20px;
-            min-height: 100vh;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #333;
-        }
-        .header h1 { font-size: 1.5rem; }
-        .last-update { color: #888; font-size: 0.9rem; }
-        .refresh-btn {
-            background: #4a4a6a;
-            color: #fff;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            text-decoration: none;
-        }
-        .refresh-btn:hover { background: #5a5a7a; }
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 20px;
-        }
-        .card {
-            background: #16213e;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        }
-        .card h2 {
-            font-size: 1.1rem;
-            margin-bottom: 15px;
-            color: #7f8fa6;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .card h2 .icon { font-size: 1.3rem; }
-        .stat {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #2a2a4a;
-        }
-        .stat:last-child { border-bottom: none; }
-        .stat-label { color: #888; }
-        .stat-value { font-weight: 600; }
-        .stat-value.positive { color: #4cd137; }
-        .stat-value.negative { color: #e84118; }
-        .stat-value.charging { color: #00a8ff; }
-        .stat-value.warning { color: #fbc531; }
-        .buttons {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 15px;
-        }
-        .btn {
-            background: #4a4a6a;
-            color: #fff;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            text-decoration: none;
-            font-size: 0.9rem;
-            transition: background 0.2s;
-        }
-        .btn:hover { background: #5a5a7a; }
-        .btn.primary { background: #00a8ff; }
-        .btn.primary:hover { background: #0097e6; }
-        .btn.danger { background: #e84118; }
-        .btn.danger:hover { background: #c23616; }
-        .btn.success { background: #4cd137; }
-        .btn.success:hover { background: #44bd32; }
-        .price-list {
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        .price-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 4px 0;
-            font-size: 0.85rem;
-        }
-        .price-row.current { background: #2a2a4a; border-radius: 4px; padding: 4px 8px; }
-        .price-row.low { color: #4cd137; }
-        .price-row.high { color: #e84118; }
-        .soc-bar {
-            height: 8px;
-            background: #2a2a4a;
-            border-radius: 4px;
-            margin-top: 8px;
-            overflow: hidden;
-        }
-        .soc-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #e84118, #fbc531, #4cd137);
-            border-radius: 4px;
-            transition: width 0.3s;
-        }
-        .power-flow {
-            display: flex;
-            justify-content: space-around;
-            text-align: center;
-            margin: 15px 0;
-        }
-        .power-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .power-icon { font-size: 2rem; margin-bottom: 5px; }
-        .power-value { font-size: 1.2rem; font-weight: 600; }
-        .power-label { font-size: 0.8rem; color: #888; }
-        .chart-container {
-            width: 100%;
-            height: 200px;
-            margin-top: 15px;
-        }
-        .echart {
-            width: 100%;
-            height: 280px;
-        }
-        .card.wide {
-            grid-column: span 2;
-        }
-        @media (max-width: 768px) {
-            .grid { grid-template-columns: 1fr; }
-            body { padding: 10px; }
-            .card.wide { grid-column: span 1; }
+        body { background: #0d1117; }
+        .card { background: #161b22; border: 1px solid #30363d; }
+        .card-header { background: #21262d; border-bottom: 1px solid #30363d; }
+        .list-group-item { background: #161b22; border-color: #30363d; }
+        .text-positive { color: #3fb950; }
+        .text-negative { color: #f85149; }
+        .text-charging { color: #58a6ff; }
+        .text-warning-custom { color: #d29922; }
+        .power-flow { display: flex; justify-content: space-around; text-align: center; padding: 1rem 0; }
+        .power-item { display: flex; flex-direction: column; align-items: center; }
+        .power-icon { font-size: 2rem; margin-bottom: 0.25rem; }
+        .power-value { font-size: 1.1rem; font-weight: 600; }
+        .power-label { font-size: 0.75rem; color: #8b949e; }
+        .echart { width: 100%; height: 300px; }
+        .soc-gradient {
+            background: linear-gradient(90deg, #f85149, #d29922, #3fb950);
+            border-radius: 0.25rem;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Home Control</h1>
-        <div>
-            <span class="last-update">Updated: {{formatDateTime .LastUpdate}}</span>
-            <a href="/api/refresh" class="refresh-btn">Refresh</a>
+    <nav class="navbar navbar-dark bg-dark border-bottom border-secondary mb-4">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">Home Control</span>
+            <div class="d-flex align-items-center gap-3">
+                <small class="text-secondary">Updated: {{formatDateTime .LastUpdate}}</small>
+                <a href="/api/refresh" class="btn btn-outline-secondary btn-sm">Refresh</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row g-4">
+            {{if .Prices}}
+            <div class="col-12 col-md-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        <span>⚡</span> <span>Energy Prices</span>
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        {{if .CurrentPrice}}
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span class="text-secondary">Current ({{formatTime .CurrentPrice.Period}})</span>
+                            <strong>€{{formatPrice .CurrentPrice.PriceEUR}}/kWh</strong>
+                        </li>
+                        {{end}}
+                        {{if .NextPrice}}
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span class="text-secondary">Next Hour</span>
+                            <strong>€{{formatPrice .NextPrice.PriceEUR}}/kWh</strong>
+                        </li>
+                        {{end}}
+                        {{if .LowestPrice}}
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span class="text-secondary">Lowest ({{formatTime .LowestPrice.Period}})</span>
+                            <strong class="text-positive">€{{formatPrice .LowestPrice.PriceEUR}}/kWh</strong>
+                        </li>
+                        {{end}}
+                        {{if .HighestPrice}}
+                        <li class="list-group-item d-flex justify-content-between">
+                            <span class="text-secondary">Highest ({{formatTime .HighestPrice.Period}})</span>
+                            <strong class="text-negative">€{{formatPrice .HighestPrice.PriceEUR}}/kWh</strong>
+                        </li>
+                        {{end}}
+                    </ul>
+                </div>
+            </div>
+            {{end}}
+
+            {{if .Battery}}
+            <div class="col-12 col-md-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        <span>🔋</span> <span>Home Battery</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary">State of Charge</span>
+                            <strong>{{printf "%.1f" .Battery.SOC}}%</strong>
+                        </div>
+                        <div class="progress mb-3" style="height: 8px;">
+                            <div class="progress-bar soc-gradient" style="width: {{printf "%.0f" .Battery.SOC}}%"></div>
+                        </div>
+                        <div class="power-flow">
+                            <div class="power-item">
+                                <span class="power-icon">☀️</span>
+                                <span class="power-value text-positive">{{formatPower .Battery.PVPower}}</span>
+                                <span class="power-label">Solar</span>
+                            </div>
+                            <div class="power-item">
+                                <span class="power-icon">🏠</span>
+                                <span class="power-value">{{formatPower .Battery.LoadPower}}</span>
+                                <span class="power-label">Load</span>
+                            </div>
+                            <div class="power-item">
+                                <span class="power-icon">🔌</span>
+                                <span class="power-value {{if gt .Battery.GridPower 0.0}}text-negative{{else if lt .Battery.GridPower 0.0}}text-positive{{end}}">{{formatPower (abs .Battery.GridPower)}}</span>
+                                <span class="power-label">Grid ({{powerDirection .Battery.GridPower}})</span>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between border-top border-secondary pt-2">
+                            <span class="text-secondary">Battery Power</span>
+                            <strong class="{{if gt .Battery.BatteryPower 0.0}}text-charging{{else if lt .Battery.BatteryPower 0.0}}text-negative{{end}}">{{formatPower (abs .Battery.BatteryPower)}} ({{batteryDirection .Battery.BatteryPower}})</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+
+            {{range .Zappis}}
+            <div class="col-12 col-md-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        <span>🚗</span> <span>Zappi {{.Serial}}</span>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush mb-3">
+                            <li class="list-group-item d-flex justify-content-between px-0">
+                                <span class="text-secondary">Mode</span>
+                                <strong>{{.Mode}}</strong>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between px-0">
+                                <span class="text-secondary">Status</span>
+                                <strong>{{.Status}}</strong>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between px-0">
+                                <span class="text-secondary">Plug</span>
+                                <strong>{{.PlugStatus}}</strong>
+                            </li>
+                        </ul>
+                        <div class="power-flow">
+                            <div class="power-item">
+                                <span class="power-icon">☀️</span>
+                                <span class="power-value text-positive">{{formatPower .SolarPower}}</span>
+                                <span class="power-label">Solar</span>
+                            </div>
+                            <div class="power-item">
+                                <span class="power-icon">🏠</span>
+                                <span class="power-value">{{formatPower .HouseConsumption}}</span>
+                                <span class="power-label">House</span>
+                            </div>
+                            <div class="power-item">
+                                <span class="power-icon">🔌</span>
+                                <span class="power-value {{if .IsImporting}}text-negative{{else if .IsExporting}}text-positive{{end}}">{{formatPower (abs .GridPower)}}</span>
+                                <span class="power-label">Grid{{if .IsImporting}} (import){{else if .IsExporting}} (export){{end}}</span>
+                            </div>
+                        </div>
+                        <ul class="list-group list-group-flush mb-3">
+                            <li class="list-group-item d-flex justify-content-between px-0">
+                                <span class="text-secondary">EV Charger</span>
+                                <strong class="{{if gt .ChargerPower 0.0}}text-charging{{end}}">{{formatPower .ChargerPower}}</strong>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between px-0">
+                                <span class="text-secondary">Session Added</span>
+                                <strong>{{printf "%.2f" .ChargeAdded}} kWh</strong>
+                            </li>
+                        </ul>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="/api/zappi?action=fast&serial={{.Serial}}" class="btn btn-success btn-sm">Fast</a>
+                            <a href="/api/zappi?action=eco&serial={{.Serial}}" class="btn btn-primary btn-sm">Eco</a>
+                            <a href="/api/zappi?action=eco%2B&serial={{.Serial}}" class="btn btn-secondary btn-sm">Eco+</a>
+                            <a href="/api/zappi?action=stop&serial={{.Serial}}" class="btn btn-danger btn-sm">Stop</a>
+                            <a href="/api/zappi?action=boost&serial={{.Serial}}&kwh=5" class="btn btn-outline-secondary btn-sm">Boost 5kWh</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+
+            {{range .Vehicles}}
+            <div class="col-12 col-md-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        <span>🚙</span> <span>{{.Vehicle.Name}}</span>
+                    </div>
+                    <div class="card-body">
+                        {{if .Charging}}{{if .Charging.Status}}
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary">Battery</span>
+                            <strong>{{.Charging.Status.Battery.StateOfChargePercent}}%</strong>
+                        </div>
+                        <div class="progress mb-3" style="height: 8px;">
+                            <div class="progress-bar soc-gradient" style="width: {{.Charging.Status.Battery.StateOfChargePercent}}%"></div>
+                        </div>
+                        <ul class="list-group list-group-flush mb-3">
+                            <li class="list-group-item d-flex justify-content-between px-0">
+                                <span class="text-secondary">Range</span>
+                                <strong>{{printf "%.0f" (divideBy .Charging.Status.Battery.RemainingRangeMeters 1000.0)}} km</strong>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between px-0">
+                                <span class="text-secondary">Charging State</span>
+                                <strong class="{{if eq .Charging.Status.State "CHARGING"}}text-charging{{end}}">{{.Charging.Status.State}}</strong>
+                            </li>
+                            {{if eq .Charging.Status.State "CHARGING"}}
+                            <li class="list-group-item d-flex justify-content-between px-0">
+                                <span class="text-secondary">Charge Power</span>
+                                <strong class="text-charging">{{printf "%.1f" .Charging.Status.ChargePowerKW}} kW</strong>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between px-0">
+                                <span class="text-secondary">Time to Full</span>
+                                <strong>{{.Charging.Status.RemainingMinutesToFullyCharged}} min</strong>
+                            </li>
+                            {{end}}
+                        </ul>
+                        {{end}}{{end}}
+                        {{if .Status}}
+                        <ul class="list-group list-group-flush mb-3">
+                            <li class="list-group-item d-flex justify-content-between px-0">
+                                <span class="text-secondary">Odometer</span>
+                                <strong>{{.Status.Mileage}} km</strong>
+                            </li>
+                            {{if .Status.Doors.OverallStatus}}
+                            <li class="list-group-item d-flex justify-content-between px-0">
+                                <span class="text-secondary">Doors</span>
+                                <strong class="{{if not .Status.Doors.Locked}}text-warning-custom{{end}}">{{if .Status.Doors.Locked}}Locked{{else}}Unlocked{{end}}</strong>
+                            </li>
+                            {{end}}
+                        </ul>
+                        {{end}}
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="/api/skoda?action=start&vin={{.Vehicle.VIN}}" class="btn btn-success btn-sm">Start Charging</a>
+                            <a href="/api/skoda?action=stop&vin={{.Vehicle.VIN}}" class="btn btn-danger btn-sm">Stop Charging</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+
+            {{if .Prices}}
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-2">
+                            <span>📊</span> <span>Energy Prices</span>
+                        </div>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="tax-toggle">
+                            <label class="form-check-label text-secondary" for="tax-toggle">Include 21% BTW</label>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="price-chart" class="echart"></div>
+                    </div>
+                </div>
+            </div>
+            {{end}}
         </div>
     </div>
 
-    <div class="grid">
-        {{if .Prices}}
-        <div class="card">
-            <h2><span class="icon">⚡</span> Energy Prices</h2>
-            {{if .CurrentPrice}}
-            <div class="stat">
-                <span class="stat-label">Current ({{formatTime .CurrentPrice.Period}})</span>
-                <span class="stat-value">€{{formatPrice .CurrentPrice.PriceEUR}}/kWh</span>
-            </div>
-            {{end}}
-            {{if .NextPrice}}
-            <div class="stat">
-                <span class="stat-label">Next Hour</span>
-                <span class="stat-value">€{{formatPrice .NextPrice.PriceEUR}}/kWh</span>
-            </div>
-            {{end}}
-            {{if .LowestPrice}}
-            <div class="stat">
-                <span class="stat-label">Lowest ({{formatTime .LowestPrice.Period}})</span>
-                <span class="stat-value positive">€{{formatPrice .LowestPrice.PriceEUR}}/kWh</span>
-            </div>
-            {{end}}
-            {{if .HighestPrice}}
-            <div class="stat">
-                <span class="stat-label">Highest ({{formatTime .HighestPrice.Period}})</span>
-                <span class="stat-value negative">€{{formatPrice .HighestPrice.PriceEUR}}/kWh</span>
-            </div>
-            {{end}}
-        </div>
-        {{end}}
-
-        {{if .Battery}}
-        <div class="card">
-            <h2><span class="icon">🔋</span> Home Battery</h2>
-            <div class="stat">
-                <span class="stat-label">State of Charge</span>
-                <span class="stat-value">{{printf "%.1f" .Battery.SOC}}%</span>
-            </div>
-            <div class="soc-bar">
-                <div class="soc-fill" style="width: {{printf "%.0f" .Battery.SOC}}%"></div>
-            </div>
-            <div class="power-flow">
-                <div class="power-item">
-                    <span class="power-icon">☀️</span>
-                    <span class="power-value positive">{{formatPower .Battery.PVPower}}</span>
-                    <span class="power-label">Solar</span>
-                </div>
-                <div class="power-item">
-                    <span class="power-icon">🏠</span>
-                    <span class="power-value">{{formatPower .Battery.LoadPower}}</span>
-                    <span class="power-label">Load</span>
-                </div>
-                <div class="power-item">
-                    <span class="power-icon">🔌</span>
-                    <span class="power-value {{if gt .Battery.GridPower 0.0}}negative{{else if lt .Battery.GridPower 0.0}}positive{{end}}">{{formatPower (abs .Battery.GridPower)}}</span>
-                    <span class="power-label">Grid ({{powerDirection .Battery.GridPower}})</span>
-                </div>
-            </div>
-            <div class="stat">
-                <span class="stat-label">Battery Power</span>
-                <span class="stat-value {{if gt .Battery.BatteryPower 0.0}}charging{{else if lt .Battery.BatteryPower 0.0}}negative{{end}}">{{formatPower (abs .Battery.BatteryPower)}} ({{batteryDirection .Battery.BatteryPower}})</span>
-            </div>
-        </div>
-        {{end}}
-
-        {{range .Zappis}}
-        <div class="card">
-            <h2><span class="icon">🚗</span> Zappi {{.Serial}}</h2>
-            <div class="stat">
-                <span class="stat-label">Mode</span>
-                <span class="stat-value">{{.Mode}}</span>
-            </div>
-            <div class="stat">
-                <span class="stat-label">Status</span>
-                <span class="stat-value">{{.Status}}</span>
-            </div>
-            <div class="stat">
-                <span class="stat-label">Plug</span>
-                <span class="stat-value">{{.PlugStatus}}</span>
-            </div>
-            <div class="power-flow">
-                <div class="power-item">
-                    <span class="power-icon">☀️</span>
-                    <span class="power-value positive">{{formatPower .SolarPower}}</span>
-                    <span class="power-label">Solar</span>
-                </div>
-                <div class="power-item">
-                    <span class="power-icon">🏠</span>
-                    <span class="power-value">{{formatPower .HouseConsumption}}</span>
-                    <span class="power-label">House</span>
-                </div>
-                <div class="power-item">
-                    <span class="power-icon">🔌</span>
-                    <span class="power-value {{if .IsImporting}}negative{{else if .IsExporting}}positive{{end}}">{{formatPower (abs .GridPower)}}</span>
-                    <span class="power-label">Grid{{if .IsImporting}} (import){{else if .IsExporting}} (export){{end}}</span>
-                </div>
-            </div>
-            <div class="stat">
-                <span class="stat-label">EV Charger</span>
-                <span class="stat-value {{if gt .ChargerPower 0.0}}charging{{end}}">{{formatPower .ChargerPower}}</span>
-            </div>
-            <div class="stat">
-                <span class="stat-label">Session Added</span>
-                <span class="stat-value">{{printf "%.2f" .ChargeAdded}} kWh</span>
-            </div>
-            <div class="buttons">
-                <a href="/api/zappi?action=fast&serial={{.Serial}}" class="btn success">Fast</a>
-                <a href="/api/zappi?action=eco&serial={{.Serial}}" class="btn primary">Eco</a>
-                <a href="/api/zappi?action=eco%2B&serial={{.Serial}}" class="btn">Eco+</a>
-                <a href="/api/zappi?action=stop&serial={{.Serial}}" class="btn danger">Stop</a>
-                <a href="/api/zappi?action=boost&serial={{.Serial}}&kwh=5" class="btn">Boost 5kWh</a>
-            </div>
-        </div>
-        {{end}}
-
-        {{range .Vehicles}}
-        <div class="card">
-            <h2><span class="icon">🚙</span> {{.Vehicle.Name}}</h2>
-            {{if .Charging}}{{if .Charging.Status}}
-            <div class="stat">
-                <span class="stat-label">Battery</span>
-                <span class="stat-value">{{.Charging.Status.Battery.StateOfChargePercent}}%</span>
-            </div>
-            <div class="soc-bar">
-                <div class="soc-fill" style="width: {{.Charging.Status.Battery.StateOfChargePercent}}%"></div>
-            </div>
-            <div class="stat">
-                <span class="stat-label">Range</span>
-                <span class="stat-value">{{printf "%.0f" (divideBy .Charging.Status.Battery.RemainingRangeMeters 1000.0)}} km</span>
-            </div>
-            <div class="stat">
-                <span class="stat-label">Charging State</span>
-                <span class="stat-value {{if eq .Charging.Status.State "CHARGING"}}charging{{end}}">{{.Charging.Status.State}}</span>
-            </div>
-            {{if eq .Charging.Status.State "CHARGING"}}
-            <div class="stat">
-                <span class="stat-label">Charge Power</span>
-                <span class="stat-value charging">{{printf "%.1f" .Charging.Status.ChargePowerKW}} kW</span>
-            </div>
-            <div class="stat">
-                <span class="stat-label">Time to Full</span>
-                <span class="stat-value">{{.Charging.Status.RemainingMinutesToFullyCharged}} min</span>
-            </div>
-            {{end}}
-            {{end}}{{end}}
-            {{if .Status}}
-            <div class="stat">
-                <span class="stat-label">Odometer</span>
-                <span class="stat-value">{{.Status.Mileage}} km</span>
-            </div>
-            {{if .Status.Doors.OverallStatus}}
-            <div class="stat">
-                <span class="stat-label">Doors</span>
-                <span class="stat-value {{if not .Status.Doors.Locked}}warning{{end}}">{{if .Status.Doors.Locked}}Locked{{else}}Unlocked{{end}}</span>
-            </div>
-            {{end}}
-            {{end}}
-            <div class="buttons">
-                <a href="/api/skoda?action=start&vin={{.Vehicle.VIN}}" class="btn success">Start Charging</a>
-                <a href="/api/skoda?action=stop&vin={{.Vehicle.VIN}}" class="btn danger">Stop Charging</a>
-            </div>
-        </div>
-        {{end}}
-
-        {{if .Prices}}
-        <div class="card wide">
-            <h2><span class="icon">📊</span> Energy Prices</h2>
-            <div style="margin-bottom: 10px;">
-                <label style="cursor: pointer; color: #888; font-size: 0.9rem;">
-                    <input type="checkbox" id="tax-toggle" style="margin-right: 6px;">
-                    Include 21% BTW
-                </label>
-            </div>
-            <div id="price-chart" class="echart"></div>
-        </div>
-        {{end}}
-    </div>
-
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
     <script>
         {{if .Prices}}
@@ -782,16 +702,15 @@ const dashboardTemplate = `<!DOCTYPE html>
             var chartDom = document.getElementById('price-chart');
             var chart = echarts.init(chartDom, 'dark');
             var taxToggle = document.getElementById('tax-toggle');
-            var TAX_RATE = 1.21;
+            var TAX_AMOUNT = 0.21; // EUR per kWh
 
-            // Raw price data with day labels
             var allRaw = [
                 {{range .Prices.Today}}
-                { hour: '{{formatTime .Period}}', price: {{printf "%.6f" .PricePerKWh}}, day: 'Today' },
+                { hour: '{{formatTime .Period}}', price: parseFloat('{{printf "%.6f" .PricePerKWh}}'), day: 'Today' },
                 {{end}}
                 {{if .Prices.Tomorrow}}
                 {{range .Prices.Tomorrow}}
-                { hour: '{{formatTime .Period}}', price: {{printf "%.6f" .PricePerKWh}}, day: 'Tomorrow' },
+                { hour: '{{formatTime .Period}}', price: parseFloat('{{printf "%.6f" .PricePerKWh}}'), day: 'Tomorrow' },
                 {{end}}
                 {{end}}
             ];
@@ -802,60 +721,49 @@ const dashboardTemplate = `<!DOCTYPE html>
 
             function renderChart() {
                 var includeTax = taxToggle.checked;
-                var taxMult = includeTax ? TAX_RATE : 1;
 
-                // Apply tax to all data
                 var allData = allRaw.map(function(d) {
-                    return { hour: d.hour, price: d.price * taxMult, day: d.day };
+                    var price = includeTax ? d.price + TAX_AMOUNT : d.price;
+                    return { hour: d.hour, price: price, day: d.day };
                 });
 
-                // Find min/max for coloring
                 var prices = allData.map(function(d) { return d.price; });
                 var minPrice = Math.min.apply(null, prices);
                 var maxPrice = Math.max.apply(null, prices);
                 var range = maxPrice - minPrice;
 
                 function getColor(price) {
-                    if (range === 0) return '#fbc531';
+                    if (range === 0) return '#d29922';
                     var pos = (price - minPrice) / range;
-                    if (pos < 0.33) return '#4cd137';
-                    if (pos < 0.66) return '#fbc531';
-                    return '#e84118';
+                    if (pos < 0.33) return '#3fb950';
+                    if (pos < 0.66) return '#d29922';
+                    return '#f85149';
                 }
 
-                // Build x-axis labels and bar data
                 var xLabels = [];
                 var barData = [];
 
                 allData.forEach(function(d, i) {
                     var isCurrent = (d.day === 'Today' && d.hour === currentHour);
-
-                    // Label format: show day at 00:00, otherwise just hour
-                    if (d.hour === '00:00') {
-                        xLabels.push(d.day + '\n00:00');
-                    } else {
-                        xLabels.push(d.hour);
-                    }
-
+                    xLabels.push(i);
                     barData.push({
                         value: d.price,
                         day: d.day,
                         hour: d.hour,
                         itemStyle: {
                             color: getColor(d.price),
-                            borderRadius: [2, 2, 0, 0],
+                            borderRadius: [3, 3, 0, 0],
                             borderColor: isCurrent ? '#fff' : 'transparent',
                             borderWidth: isCurrent ? 2 : 0
                         }
                     });
                 });
 
-                // Mark line to separate days
                 var markLineData = [];
                 if (hasTomorrow) {
                     markLineData.push({
                         xAxis: todayCount - 0.5,
-                        lineStyle: { color: '#888', type: 'solid', width: 2 }
+                        lineStyle: { color: '#484f58', type: 'solid', width: 2 }
                     });
                 }
 
@@ -863,92 +771,72 @@ const dashboardTemplate = `<!DOCTYPE html>
                     backgroundColor: 'transparent',
                     tooltip: {
                         trigger: 'item',
-                        backgroundColor: 'rgba(0,0,0,0.9)',
-                        borderColor: '#555',
-                        padding: [10, 14],
-                        textStyle: { color: '#fff', fontSize: 13 },
+                        backgroundColor: '#21262d',
+                        borderColor: '#30363d',
+                        padding: [12, 16],
+                        textStyle: { color: '#c9d1d9', fontSize: 13 },
                         formatter: function(params) {
                             var d = params.data;
-                            var taxLabel = includeTax ? ' (incl. BTW)' : ' (excl. BTW)';
-                            return '<div style="font-weight:600; margin-bottom:4px;">' + d.day + ' ' + d.hour + '</div>' +
-                                   '<span style="font-size:1.3em; font-weight:700; color:' + d.itemStyle.color + '">€' + d.value.toFixed(4) + '</span>' +
-                                   '<span style="color:#aaa"> /kWh</span>' +
-                                   '<div style="color:#888; font-size:11px; margin-top:4px;">' + taxLabel + '</div>';
+                            var taxLabel = includeTax ? 'incl. 21% BTW' : 'excl. BTW';
+                            return '<div style="font-weight:600; margin-bottom:6px;">' + d.day + ' ' + d.hour + '</div>' +
+                                   '<span style="font-size:1.4em; font-weight:700; color:' + d.itemStyle.color + '">€' + d.value.toFixed(4) + '</span>' +
+                                   '<span style="color:#8b949e"> /kWh</span>' +
+                                   '<div style="color:#8b949e; font-size:11px; margin-top:6px;">' + taxLabel + '</div>';
                         }
                     },
-                    grid: {
-                        left: 50,
-                        right: 15,
-                        top: 20,
-                        bottom: 50
-                    },
+                    grid: { left: 55, right: 20, top: 20, bottom: 55 },
                     xAxis: {
                         type: 'category',
-                        data: xLabels,
+                        data: allData.map(function(d) {
+                            var hourNum = parseInt(d.hour.split(':')[0]);
+                            if (hourNum === 0) return d.day.substr(0, 3) + ' 00:00';
+                            return d.hour;
+                        }),
                         axisLabel: {
-                            color: '#999',
+                            color: '#8b949e',
                             fontSize: 11,
-                            interval: function(index) {
-                                // Show label every 4 hours, and at day boundaries
-                                var hour = allData[index].hour;
-                                if (hour === '00:00') return true;
-                                var hourNum = parseInt(hour.split(':')[0]);
-                                return hourNum % 4 === 0;
-                            }
+                            hideOverlap: true
                         },
-                        axisLine: { lineStyle: { color: '#444' } },
+                        axisLine: { lineStyle: { color: '#30363d' } },
                         axisTick: { show: false }
                     },
                     yAxis: {
                         type: 'value',
-                        name: includeTax ? '€/kWh +BTW' : '€/kWh',
-                        nameTextStyle: { color: '#888', fontSize: 11 },
-                        nameGap: 8,
+                        name: includeTax ? '€/kWh (incl. BTW)' : '€/kWh',
+                        nameTextStyle: { color: '#8b949e', fontSize: 11 },
+                        nameGap: 10,
                         axisLabel: {
-                            color: '#888',
+                            color: '#8b949e',
                             fontSize: 11,
                             formatter: function(v) { return v.toFixed(2); }
                         },
                         axisLine: { show: false },
-                        splitLine: { lineStyle: { color: '#2a2a4a' } }
+                        splitLine: { lineStyle: { color: '#21262d' } }
                     },
                     series: [{
                         type: 'bar',
                         data: barData,
-                        barCategoryGap: '20%',
+                        barCategoryGap: '25%',
                         markLine: {
                             silent: true,
                             symbol: 'none',
-                            label: {
-                                show: hasTomorrow,
-                                position: 'insideStartTop',
-                                formatter: 'Tomorrow',
-                                color: '#888',
-                                fontSize: 10
-                            },
+                            label: { show: hasTomorrow, position: 'insideStartTop', formatter: 'Tomorrow', color: '#8b949e', fontSize: 11 },
                             data: markLineData
                         }
                     }]
                 };
 
-                chart.setOption(option, true);
+                chart.clear();
+                chart.setOption(option);
             }
 
-            // Initial render
             renderChart();
-
-            // Toggle tax
             taxToggle.addEventListener('change', renderChart);
-
-            // Resize handler
             window.addEventListener('resize', function() { chart.resize(); });
         })();
         {{end}}
 
-        // Auto-refresh every 60 seconds
-        setTimeout(function() {
-            window.location.reload();
-        }, 60000);
+        setTimeout(function() { window.location.reload(); }, 60000);
     </script>
 </body>
 </html>`
