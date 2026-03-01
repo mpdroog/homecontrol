@@ -44,6 +44,9 @@ type DataPoint struct {
 
 	// Zappi
 	ZappiPower   float64 `json:"zappi_power"`
+	ZappiSolar   float64 `json:"zappi_solar"`
+	ZappiHouse   float64 `json:"zappi_house"`
+	ZappiGrid    float64 `json:"zappi_grid"`
 	ZappiMode    string  `json:"zappi_mode"`
 	ZappiStatus  string  `json:"zappi_status"`
 	ChargeAdded  float64 `json:"charge_added"`
@@ -130,10 +133,14 @@ func (c *Collector) collect() DataPoint {
 	// Zappi
 	if c.meClient != nil {
 		if zappis, err := c.meClient.GetZappiStatus(); err == nil && len(zappis) > 0 {
-			dp.ZappiPower = zappis[0].ChargerPower
-			dp.ZappiMode = zappis[0].Mode.String()
-			dp.ZappiStatus = zappis[0].Status.String()
-			dp.ChargeAdded = zappis[0].ChargeAdded
+			z := &zappis[0]
+			dp.ZappiPower = z.ChargerPower()
+			dp.ZappiSolar = z.SolarPower()
+			dp.ZappiHouse = z.HouseConsumption()
+			dp.ZappiGrid = z.GridPower
+			dp.ZappiMode = z.Mode.String()
+			dp.ZappiStatus = z.Status.String()
+			dp.ChargeAdded = z.ChargeAdded
 		} else if err != nil {
 			log.Printf("MyEnergi error: %v", err)
 		}

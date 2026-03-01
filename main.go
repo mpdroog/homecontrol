@@ -558,9 +558,16 @@ func showZappiStatus(client *myenergi.Client) {
 		fmt.Printf("  Plug:           %s\n", z.PlugStatus.String())
 
 		fmt.Printf("\n[Power]\n")
-		fmt.Printf("  Charger Power:  %.0f W\n", z.ChargerPower)
-		fmt.Printf("  Grid Power:     %.0f W\n", z.GridPower)
-		fmt.Printf("  Generated:      %.0f W\n", z.GeneratedPower)
+		fmt.Printf("  Solar:          %.0f W\n", z.SolarPower())
+		fmt.Printf("  House:          %.0f W\n", z.HouseConsumption())
+		fmt.Printf("  EV Charger:     %.0f W\n", z.ChargerPower())
+		fmt.Printf("  Grid:           %.0f W", z.GridPower)
+		if z.IsImporting() {
+			fmt.Printf(" (importing)")
+		} else if z.IsExporting() {
+			fmt.Printf(" (exporting)")
+		}
+		fmt.Println()
 		if z.Diverted > 0 {
 			fmt.Printf("  Diverted:       %.0f W\n", z.Diverted)
 		}
@@ -577,10 +584,10 @@ func showZappiStatus(client *myenergi.Client) {
 		fmt.Printf("\n[Settings]\n")
 		fmt.Printf("  Min Green:      %d %%\n", z.MinGreenLevel)
 		if z.Voltage > 0 {
-			fmt.Printf("  Voltage:        %.1f V\n", z.Voltage/10)
+			fmt.Printf("  Voltage:        %.1f V\n", z.VoltageV())
 		}
 		if z.Frequency > 0 {
-			fmt.Printf("  Frequency:      %.2f Hz\n", z.Frequency/100)
+			fmt.Printf("  Frequency:      %.2f Hz\n", z.FrequencyHz())
 		}
 	}
 }

@@ -97,9 +97,25 @@ type Zappi struct {
 	PlugStatus     ZappiPlugStatus `json:"pst"`    // Plug status
 	ChargeAdded    float64         `json:"che"`    // Charge added this session (kWh)
 	Diverted       float64         `json:"div"`    // Current diversion (W)
-	GridPower      float64         `json:"grd"`    // Grid power (W)
-	GeneratedPower float64         `json:"gen"`    // Generated power (W)
-	ChargerPower   float64         `json:"ectp1"`  // CT1 power - usually charger (W)
+	GridPower      float64         `json:"grd"`    // Grid power (W), positive=importing, negative=exporting
+	GeneratedPower float64         `json:"gen"`    // Generated/solar power (W)
+
+	// CT clamp readings (W) - what each measures depends on configuration
+	CT1Power       float64         `json:"ectp1"`  // CT1 power (often internal/charger)
+	CT2Power       float64         `json:"ectp2"`  // CT2 power
+	CT3Power       float64         `json:"ectp3"`  // CT3 power
+	CT4Power       float64         `json:"ectp4"`  // CT4 power
+	CT5Power       float64         `json:"ectp5"`  // CT5 power
+	CT6Power       float64         `json:"ectp6"`  // CT6 power
+
+	// CT clamp types - describes what each CT measures
+	CT1Type        string          `json:"ectt1"`  // CT1 type (e.g., "Internal Load", "Grid", "Generation")
+	CT2Type        string          `json:"ectt2"`  // CT2 type
+	CT3Type        string          `json:"ectt3"`  // CT3 type
+	CT4Type        string          `json:"ectt4"`  // CT4 type
+	CT5Type        string          `json:"ectt5"`  // CT5 type
+	CT6Type        string          `json:"ectt6"`  // CT6 type
+
 	MinGreenLevel  int             `json:"mgl"`    // Minimum green level (%)
 	Voltage        float64         `json:"vol"`    // Voltage (V/10)
 	Frequency      float64         `json:"frq"`    // Frequency (Hz/100)
@@ -108,6 +124,54 @@ type Zappi struct {
 	SmartBoostMin  int             `json:"sbm"`    // Smart boost minute
 	LockStatus     int             `json:"lck"`    // Lock status
 	FirmwareVer    string          `json:"fwv"`    // Firmware version
+
+	// Phase data for 3-phase installations
+	Phase1Power    float64         `json:"ectp1p1"` // Phase 1 power
+	Phase2Power    float64         `json:"ectp1p2"` // Phase 2 power
+	Phase3Power    float64         `json:"ectp1p3"` // Phase 3 power
+}
+
+// ChargerPower returns the power being used by the charger (W).
+// This is typically CT1 which measures internal load.
+func (z *Zappi) ChargerPower() float64 {
+	return z.CT1Power
+}
+
+// SolarPower returns the solar/generation power (W).
+// Uses the 'gen' field which aggregates all generation CTs.
+func (z *Zappi) SolarPower() float64 {
+	return z.GeneratedPower
+}
+
+// HouseConsumption calculates house power consumption (W).
+// Formula: Grid import + Solar generation - EV charging - Export
+// Positive grid = importing, negative = exporting
+func (z *Zappi) HouseConsumption() float64 {
+	// House load = What's coming in (grid + solar) minus what's going to the car
+	// GridPower: positive = importing from grid, negative = exporting to grid
+	// GeneratedPower: solar production (always positive)
+	// CT1Power (charger): power going to the EV
+	return z.GridPower + z.GeneratedPower - z.CT1Power
+}
+
+// VoltageV returns the voltage in Volts (API returns V/10).
+func (z *Zappi) VoltageV() float64 {
+	return z.Voltage / 10
+}
+
+// FrequencyHz returns the frequency in Hz (API returns Hz/100).
+func (z *Zappi) FrequencyHz() float64 {
+	return z.Frequency / 100
+}
+
+// IsExporting returns true if exporting power to the grid.
+func (z *Zappi) IsExporting() bool {
+	return z.GridPower < 0
+}
+
+// IsImporting returns true if importing power from the grid.
+func (z *Zappi) IsImporting() bool {
+	return z.GridPower > 0
 }
 
 // NewClient creates a new myenergi client.

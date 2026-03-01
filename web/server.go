@@ -742,8 +742,25 @@ const dashboardTemplate = `<!DOCTYPE html>
                 <span class="stat-label">Plug</span>
                 <span class="stat-value">{{.PlugStatus}}</span>
             </div>
+            <div class="power-flow">
+                <div class="power-item">
+                    <span class="power-icon">☀️</span>
+                    <span class="power-value positive">{{formatPower .SolarPower}}</span>
+                    <span class="power-label">Solar</span>
+                </div>
+                <div class="power-item">
+                    <span class="power-icon">🏠</span>
+                    <span class="power-value">{{formatPower .HouseConsumption}}</span>
+                    <span class="power-label">House</span>
+                </div>
+                <div class="power-item">
+                    <span class="power-icon">🔌</span>
+                    <span class="power-value {{if .IsImporting}}negative{{else if .IsExporting}}positive{{end}}">{{formatPower (abs .GridPower)}}</span>
+                    <span class="power-label">Grid{{if .IsImporting}} (import){{else if .IsExporting}} (export){{end}}</span>
+                </div>
+            </div>
             <div class="stat">
-                <span class="stat-label">Charger Power</span>
+                <span class="stat-label">EV Charger</span>
                 <span class="stat-value {{if gt .ChargerPower 0.0}}charging{{end}}">{{formatPower .ChargerPower}}</span>
             </div>
             <div class="stat">
