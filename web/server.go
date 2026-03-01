@@ -448,103 +448,134 @@ const dashboardTemplate = `<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Home Control Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        body { background: #0d1117; }
-        .card { background: #161b22; border: 1px solid #30363d; }
-        .card-header { background: #21262d; border-bottom: 1px solid #30363d; }
-        .list-group-item { background: #161b22; border-color: #30363d; }
-        .text-positive { color: #3fb950; }
-        .text-negative { color: #f85149; }
-        .text-charging { color: #58a6ff; }
-        .text-warning-custom { color: #d29922; }
-        .power-flow { display: flex; justify-content: space-around; text-align: center; padding: 1rem 0; }
-        .power-item { display: flex; flex-direction: column; align-items: center; }
-        .power-icon { font-size: 2rem; margin-bottom: 0.25rem; }
-        .power-value { font-size: 1.1rem; font-weight: 600; }
-        .power-label { font-size: 0.75rem; color: #8b949e; }
+        :root {
+            --bg-primary: #0f1419;
+            --bg-secondary: #1a1f2e;
+            --bg-card: #1e2433;
+            --bg-card-header: #252b3b;
+            --border-color: #2d3548;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-blue: #58a6ff;
+            --accent-yellow: #d29922;
+            --accent-cyan: #22d3ee;
+            --accent-orange: #f97316;
+            --accent-purple: #a855f7;
+        }
+        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+            transition: box-shadow 0.2s ease;
+        }
+        .card:hover {
+            box-shadow: 0 8px 12px -2px rgba(0, 0, 0, 0.3);
+        }
+        .card-header {
+            background: var(--bg-card-header);
+            border-bottom: 1px solid var(--border-color);
+            border-radius: 12px 12px 0 0 !important;
+            font-weight: 600;
+            padding: 1rem 1.25rem;
+        }
+        .card-body { padding: 1.25rem; }
+        .list-group-item {
+            background: transparent;
+            border-color: var(--border-color);
+            padding: 0.875rem 0;
+        }
+        .text-positive { color: var(--accent-green); }
+        .text-negative { color: var(--accent-red); }
+        .text-charging { color: var(--accent-blue); }
+        .text-warning-custom { color: var(--accent-yellow); }
+        .text-secondary { color: var(--text-secondary) !important; }
         .echart { width: 100%; height: 300px; }
         .soc-gradient {
-            background: linear-gradient(90deg, #f85149, #d29922, #3fb950);
-            border-radius: 0.25rem;
+            background: linear-gradient(90deg, var(--accent-red), var(--accent-yellow), var(--accent-green));
+            border-radius: 6px;
         }
+        .progress { background: var(--bg-secondary); border-radius: 6px; }
+        /* Buttons */
+        .btn {
+            border-radius: 8px;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            transition: all 0.2s ease;
+        }
+        .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.875rem; }
+        .btn-outline-secondary {
+            border-color: var(--border-color);
+            color: var(--text-secondary);
+        }
+        .btn-outline-secondary:hover {
+            background: var(--bg-secondary);
+            border-color: var(--text-secondary);
+            color: var(--text-primary);
+        }
+        /* Navbar */
+        .navbar {
+            background: var(--bg-secondary) !important;
+            border-bottom: 1px solid var(--border-color) !important;
+            padding: 0.875rem 0;
+        }
+        .navbar-brand { font-weight: 700; font-size: 1.25rem; }
+        .badge {
+            font-weight: 600;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+        }
+        .summary-value { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+        .summary-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        /* Icon styling */
+        .icon-header { width: 20px; height: 20px; stroke-width: 2; }
+        .icon-sm { width: 16px; height: 16px; }
         /* Energy Flow Diagram */
         .energy-flow-svg { width: 100%; height: 320px; }
-        .energy-node {
-            fill: none;
-            stroke-width: 3;
-        }
-        .energy-node-bg {
-            fill: #161b22;
-        }
-        .energy-node-icon {
-            fill: #8b949e;
-            font-size: 24px;
-            dominant-baseline: central;
-            text-anchor: middle;
-        }
-        .energy-label {
-            fill: #c9d1d9;
-            font-size: 13px;
-            font-weight: 600;
-            text-anchor: middle;
-        }
-        .energy-sublabel {
-            fill: #8b949e;
-            font-size: 11px;
-            text-anchor: middle;
-        }
-        .flow-line {
-            fill: none;
-            stroke: #30363d;
-            stroke-width: 3;
-        }
-        .flow-line-active {
-            stroke-width: 3;
-            stroke-linecap: round;
-        }
-        .flow-dots {
-            fill: none;
-            stroke-width: 4;
-            stroke-linecap: round;
-            stroke-dasharray: 0 12;
-        }
-        @keyframes flowForward {
-            0% { stroke-dashoffset: 24; }
-            100% { stroke-dashoffset: 0; }
-        }
-        @keyframes flowBackward {
-            0% { stroke-dashoffset: 0; }
-            100% { stroke-dashoffset: 24; }
-        }
-        .flow-animate-forward {
-            animation: flowForward 0.8s linear infinite;
-        }
-        .flow-animate-backward {
-            animation: flowBackward 0.8s linear infinite;
-        }
-        .node-house { stroke: #da3cda; }
-        .node-zappi { stroke: #3b82f6; }
-        .node-grid { stroke: #f97316; }
-        .node-solar { stroke: #3fb950; }
-        .node-battery { stroke: #22d3ee; }
-        .node-center { stroke: #3fb950; }
-        .flow-grid { stroke: #f97316; }
-        .flow-solar { stroke: #3fb950; }
-        .flow-zappi { stroke: #3b82f6; }
-        .flow-house { stroke: #da3cda; }
-        .flow-battery { stroke: #22d3ee; }
-        /* Summary bar */
-        .summary-bar { background: #161b22; border: 1px solid #30363d; border-radius: 0.5rem; }
-        .summary-item { text-align: center; padding: 0.75rem; }
-        .summary-value { font-size: 1.25rem; font-weight: 700; }
-        .summary-label { font-size: 0.75rem; color: #8b949e; }
-        /* Responsive Energy Flow */
+        .energy-node { fill: none; stroke-width: 3; }
+        .energy-node-bg { fill: var(--bg-card); }
+        .energy-node-icon { fill: var(--text-secondary); font-size: 24px; dominant-baseline: central; text-anchor: middle; }
+        .energy-label { fill: var(--text-primary); font-size: 13px; font-weight: 600; text-anchor: middle; }
+        .energy-sublabel { fill: var(--text-secondary); font-size: 11px; text-anchor: middle; }
+        .flow-line { fill: none; stroke: var(--border-color); stroke-width: 3; }
+        .flow-line-active { stroke-width: 3; stroke-linecap: round; }
+        .flow-dots { fill: none; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 0 12; }
+        @keyframes flowForward { 0% { stroke-dashoffset: 24; } 100% { stroke-dashoffset: 0; } }
+        @keyframes flowBackward { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 24; } }
+        .flow-animate-forward { animation: flowForward 0.8s linear infinite; }
+        .flow-animate-backward { animation: flowBackward 0.8s linear infinite; }
+        .node-house { stroke: var(--accent-purple); }
+        .node-zappi { stroke: var(--accent-blue); }
+        .node-grid { stroke: var(--accent-orange); }
+        .node-solar { stroke: var(--accent-green); }
+        .node-battery { stroke: var(--accent-cyan); }
+        .node-center { stroke: var(--accent-green); }
+        .flow-grid { stroke: var(--accent-orange); }
+        .flow-solar { stroke: var(--accent-green); }
+        .flow-zappi { stroke: var(--accent-blue); }
+        .flow-house { stroke: var(--accent-purple); }
+        .flow-battery { stroke: var(--accent-cyan); }
+        /* Responsive */
         @media (max-width: 576px) {
             .energy-flow-svg { height: 280px; }
             .energy-label { font-size: 11px; }
             .energy-sublabel { font-size: 9px; }
-            .energy-node-icon { font-size: 16px; }
+            .summary-value { font-size: 1.25rem; }
         }
     </style>
 </head>
@@ -561,62 +592,7 @@ const dashboardTemplate = `<!DOCTYPE html>
     </nav>
 
     <div class="container-fluid">
-        <!-- Summary Bar -->
-        <div class="summary-bar d-flex flex-wrap justify-content-around mb-4 py-2">
-            {{if .CurrentPrice}}
-            <div class="summary-item">
-                <div class="summary-value">{{formatPrice .CurrentPrice.PriceEUR}}</div>
-                <div class="summary-label">/kWh now</div>
-            </div>
-            {{end}}
-            {{if .Zappis}}{{with index .Zappis 0}}
-            <div class="summary-item">
-                <div class="summary-value text-positive">{{formatPower .SolarPower}}</div>
-                <div class="summary-label">Solar</div>
-            </div>
-            <div class="summary-item">
-                <div class="summary-value {{if .IsImporting}}text-negative{{else if .IsExporting}}text-positive{{end}}">{{formatPower (abs .GridPower)}}</div>
-                <div class="summary-label">Grid {{if .IsImporting}}Import{{else if .IsExporting}}Export{{else}}--{{end}}</div>
-            </div>
-            {{end}}{{end}}
-            {{if .Battery}}
-            <div class="summary-item">
-                <div class="summary-value text-charging">{{printf "%.0f" .Battery.SOC}}%</div>
-                <div class="summary-label">Battery</div>
-            </div>
-            {{end}}
-            {{if .Vehicles}}{{with index .Vehicles 0}}{{if .Charging}}{{if .Charging.Status}}
-            <div class="summary-item">
-                <div class="summary-value">{{.Charging.Status.Battery.StateOfChargePercent}}%</div>
-                <div class="summary-label">Car</div>
-            </div>
-            {{end}}{{end}}{{end}}{{end}}
-        </div>
-
         <div class="row g-4">
-            {{if .Battery}}
-            <div class="col-12 col-md-6 col-lg-4">
-                <div class="card h-100">
-                    <div class="card-header d-flex align-items-center gap-2">
-                        <span>🔋</span> <span>Home Battery</span>
-                    </div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between mb-2">
-                            <span class="text-secondary">State of Charge</span>
-                            <strong>{{printf "%.1f" .Battery.SOC}}%</strong>
-                        </div>
-                        <div class="progress mb-3" style="height: 8px;">
-                            <div class="progress-bar soc-gradient" style="width: {{printf "%.0f" .Battery.SOC}}%"></div>
-                        </div>
-                        <div class="d-flex justify-content-between">
-                            <span class="text-secondary">Battery Power</span>
-                            <strong class="{{if gt .Battery.BatteryPower 0.0}}text-charging{{else if lt .Battery.BatteryPower 0.0}}text-negative{{end}}">{{formatPower (abs .Battery.BatteryPower)}} ({{batteryDirection .Battery.BatteryPower}})</strong>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {{end}}
-
             <!-- Energy Flow Diagram -->
             {{if or .Battery .Zappis}}
             <div class="col-12">
@@ -733,7 +709,7 @@ const dashboardTemplate = `<!DOCTYPE html>
             <div class="col-12 col-md-6 col-lg-4">
                 <div class="card h-100">
                     <div class="card-header d-flex align-items-center gap-2">
-                        <span>🚗</span> <span>Zappi {{.Serial}}</span>
+                        <span>🔌</span> <span>Zappi {{.Serial}}</span>
                     </div>
                     <div class="card-body">
                         <ul class="list-group list-group-flush mb-3">
@@ -798,10 +774,6 @@ const dashboardTemplate = `<!DOCTYPE html>
                             </li>
                             {{if eq .Charging.Status.State "CHARGING"}}
                             <li class="list-group-item d-flex justify-content-between px-0">
-                                <span class="text-secondary">Charge Power</span>
-                                <strong class="text-charging">{{printf "%.1f" .Charging.Status.ChargePowerKW}} kW</strong>
-                            </li>
-                            <li class="list-group-item d-flex justify-content-between px-0">
                                 <span class="text-secondary">Time to Full</span>
                                 <strong>{{.Charging.Status.RemainingMinutesToFullyCharged}} min</strong>
                             </li>
@@ -826,6 +798,29 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <a href="/api/skoda?action=start&vin={{.Vehicle.VIN}}" class="btn btn-success btn-sm">Start Charging</a>
                             <a href="/api/skoda?action=stop&vin={{.Vehicle.VIN}}" class="btn btn-danger btn-sm">Stop Charging</a>
                             <a href="/api/skoda?action=wakeup&vin={{.Vehicle.VIN}}" class="btn btn-outline-warning btn-sm" title="Max 3x per day">Wake Up</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+
+            {{if .Battery}}
+            <div class="col-12 col-md-6 col-lg-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        <span>🔋</span> <span>Home Battery</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="text-secondary">State of Charge</span>
+                            <strong>{{printf "%.1f" .Battery.SOC}}%</strong>
+                        </div>
+                        <div class="progress mb-3" style="height: 8px;">
+                            <div class="progress-bar soc-gradient" style="width: {{printf "%.0f" .Battery.SOC}}%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span class="text-secondary">Battery Power</span>
+                            <strong class="{{if gt .Battery.BatteryPower 0.0}}text-charging{{else if lt .Battery.BatteryPower 0.0}}text-negative{{end}}">{{formatPower (abs .Battery.BatteryPower)}} ({{batteryDirection .Battery.BatteryPower}})</strong>
                         </div>
                     </div>
                 </div>
