@@ -1,6 +1,8 @@
 # homecontrol
 
-CLI tool for monitoring and controlling home energy devices.
+![Screenshot](images/dashboard.png)
+
+CLI/Web tool for monitoring and controlling home energy devices.
 
 ## Supported Devices
 
