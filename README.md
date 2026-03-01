@@ -1,6 +1,6 @@
 # homecontrol
 
-![Screenshot](images/dashboard.png)
+![Screenshot](dashboard.png)
 
 CLI/Web tool for monitoring and controlling home energy devices.
 
