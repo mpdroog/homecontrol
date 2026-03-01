@@ -5,18 +5,27 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/mpdroog/homecontrol/alphaess"
+	"github.com/mpdroog/homecontrol/collector"
 	"github.com/mpdroog/homecontrol/myenergi"
 	"github.com/mpdroog/homecontrol/myskoda"
 	"github.com/mpdroog/homecontrol/nordpool"
+	"github.com/mpdroog/homecontrol/web"
 )
 
 type Config struct {
 	MySkoda   MySkodaConfig   `toml:"myskoda"`
 	AlphaESS  AlphaESSConfig  `toml:"alphaess"`
 	MyEnergi  MyEnergiConfig  `toml:"myenergi"`
+	Server    ServerConfig    `toml:"server"`
+}
+
+type ServerConfig struct {
+	Listen  string `toml:"listen"`
+	DataDir string `toml:"datadir"`
 }
 
 type MySkodaConfig struct {
@@ -46,6 +55,14 @@ Commands:
   prices              Show hourly energy prices (today & tomorrow)
   battery             Show AlphaESS home battery status
   zappi               Show Zappi EV charger status
+  zappi-start         Start Zappi charging (Fast mode)
+  zappi-stop          Stop Zappi charging
+  zappi-eco           Set Zappi to Eco mode
+  zappi-eco+          Set Zappi to Eco+ mode
+  zappi-boost KWH     Boost charge for KWH kilowatt-hours
+  server              Start HTTP dashboard server
+  collect             Start data collector (runs every minute)
+  collect-once        Collect data once and exit (for cron)
 
 Options:
 `)
@@ -79,6 +96,65 @@ func main() {
 		return
 	}
 
+	// Handle server command
+	if cmd == "server" {
+		listenAddr := cfg.Server.Listen
+		if listenAddr == "" {
+			listenAddr = ":8080"
+		}
+		dataDir := cfg.Server.DataDir
+		if dataDir == "" {
+			dataDir = "./data"
+		}
+
+		srv := web.NewServer(web.Config{
+			ListenAddr:      listenAddr,
+			DataDir:         dataDir,
+			MySkodaUsername: cfg.MySkoda.Username,
+			MySkodaPassword: cfg.MySkoda.Password,
+			AlphaESSAppID:   cfg.AlphaESS.AppID,
+			AlphaESSSecret:  cfg.AlphaESS.AppSecret,
+			AlphaESSSN:      cfg.AlphaESS.SN,
+			MyEnergiSerial:  cfg.MyEnergi.HubSerial,
+			MyEnergiPass:    cfg.MyEnergi.Password,
+		})
+		if err := srv.Run(); err != nil {
+			log.Fatalf("Server error: %v", err)
+		}
+		return
+	}
+
+	// Handle collect command
+	if cmd == "collect" || cmd == "collect-once" {
+		dataDir := cfg.Server.DataDir
+		if dataDir == "" {
+			dataDir = "./data"
+		}
+
+		coll := collector.NewCollector(collector.Config{
+			DataDir:         dataDir,
+			Interval:        time.Minute,
+			MySkodaUsername: cfg.MySkoda.Username,
+			MySkodaPassword: cfg.MySkoda.Password,
+			AlphaESSAppID:   cfg.AlphaESS.AppID,
+			AlphaESSSecret:  cfg.AlphaESS.AppSecret,
+			AlphaESSSN:      cfg.AlphaESS.SN,
+			MyEnergiSerial:  cfg.MyEnergi.HubSerial,
+			MyEnergiPass:    cfg.MyEnergi.Password,
+		})
+
+		if cmd == "collect-once" {
+			if err := coll.RunOnce(); err != nil {
+				log.Fatalf("Collector error: %v", err)
+			}
+		} else {
+			if err := coll.Run(); err != nil {
+				log.Fatalf("Collector error: %v", err)
+			}
+		}
+		return
+	}
+
 	// Handle battery command (AlphaESS)
 	if cmd == "battery" {
 		if cfg.AlphaESS.AppID == "" || cfg.AlphaESS.AppSecret == "" {
@@ -97,8 +173,8 @@ func main() {
 		return
 	}
 
-	// Handle zappi command (myenergi)
-	if cmd == "zappi" {
+	// Handle zappi commands (myenergi)
+	if cmd == "zappi" || cmd == "zappi-start" || cmd == "zappi-stop" || cmd == "zappi-eco" || cmd == "zappi-eco+" || cmd == "zappi-boost" {
 		if cfg.MyEnergi.HubSerial == "" || cfg.MyEnergi.Password == "" {
 			fmt.Fprintln(os.Stderr, "Error: myenergi.hubserial and myenergi.password must be set in config.toml")
 			os.Exit(1)
@@ -108,7 +184,29 @@ func main() {
 		}
 		meClient := myenergi.NewClient(cfg.MyEnergi.HubSerial, cfg.MyEnergi.Password)
 		meClient.SetDebug(*debug)
-		showZappiStatus(meClient)
+
+		switch cmd {
+		case "zappi":
+			showZappiStatus(meClient)
+		case "zappi-start":
+			controlZappi(meClient, myenergi.ZappiModeFast, "Starting charging (Fast mode)")
+		case "zappi-stop":
+			controlZappi(meClient, myenergi.ZappiModeStopped, "Stopping charging")
+		case "zappi-eco":
+			controlZappi(meClient, myenergi.ZappiModeEco, "Setting Eco mode")
+		case "zappi-eco+":
+			controlZappi(meClient, myenergi.ZappiModeEcoPlus, "Setting Eco+ mode")
+		case "zappi-boost":
+			var kwh int
+			if len(args) >= 2 {
+				fmt.Sscanf(args[1], "%d", &kwh)
+			}
+			if kwh <= 0 {
+				fmt.Fprintln(os.Stderr, "Error: zappi-boost requires KWH argument (e.g., zappi-boost 10)")
+				os.Exit(1)
+			}
+			boostZappi(meClient, kwh)
+		}
 		return
 	}
 
@@ -485,4 +583,48 @@ func showZappiStatus(client *myenergi.Client) {
 			fmt.Printf("  Frequency:      %.2f Hz\n", z.Frequency/100)
 		}
 	}
+}
+
+func controlZappi(client *myenergi.Client, mode myenergi.ZappiMode, message string) {
+	// Get Zappi serial first
+	zappis, err := client.GetZappiStatus()
+	if err != nil {
+		log.Fatalf("Failed to get Zappi status: %v", err)
+	}
+
+	if len(zappis) == 0 {
+		fmt.Println("No Zappi devices found")
+		return
+	}
+
+	serial := fmt.Sprintf("%d", zappis[0].Serial)
+	fmt.Printf("%s for Zappi %s...\n", message, serial)
+
+	if err := client.SetZappiMode(serial, mode); err != nil {
+		log.Fatalf("Failed to set Zappi mode: %v", err)
+	}
+
+	fmt.Println("Done!")
+}
+
+func boostZappi(client *myenergi.Client, kwh int) {
+	// Get Zappi serial first
+	zappis, err := client.GetZappiStatus()
+	if err != nil {
+		log.Fatalf("Failed to get Zappi status: %v", err)
+	}
+
+	if len(zappis) == 0 {
+		fmt.Println("No Zappi devices found")
+		return
+	}
+
+	serial := fmt.Sprintf("%d", zappis[0].Serial)
+	fmt.Printf("Starting boost charge of %d kWh for Zappi %s...\n", kwh, serial)
+
+	if err := client.BoostZappi(serial, kwh); err != nil {
+		log.Fatalf("Failed to start boost: %v", err)
+	}
+
+	fmt.Println("Boost started!")
 }
