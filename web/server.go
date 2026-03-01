@@ -641,34 +641,26 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <path class="flow-line" d="M240,160 L90,260" />
                             {{end}}
 
-                            <!-- Animated flow dots: Solar to Center -->
-                            {{if .Battery}}{{if gt .Battery.PVPower 0.0}}
+                            <!-- Animated flow dots: Solar to Center (from Zappi) -->
+                            {{if .Zappis}}{{with index .Zappis 0}}{{if gt .SolarPower 0.0}}
                             <path class="flow-dots flow-solar flow-animate-forward" d="M240,270 L240,160" />
-                            {{end}}{{else}}{{if .Zappis}}{{with index .Zappis 0}}{{if gt .SolarPower 0.0}}
-                            <path class="flow-dots flow-solar flow-animate-forward" d="M240,270 L240,160" />
-                            {{end}}{{end}}{{end}}{{end}}
+                            {{end}}{{end}}{{end}}
 
-                            <!-- Animated flow dots: Grid -->
-                            {{if .Battery}}
-                                {{if gt .Battery.GridPower 0.0}}
-                                <path class="flow-dots flow-grid flow-animate-forward" d="M420,160 L240,160" />
-                                {{else if lt .Battery.GridPower 0.0}}
-                                <path class="flow-dots flow-grid flow-animate-backward" d="M420,160 L240,160" />
-                                {{end}}
-                            {{else}}{{if .Zappis}}{{with index .Zappis 0}}
+                            <!-- Animated flow dots: Grid (from Zappi) -->
+                            {{if .Zappis}}{{with index .Zappis 0}}
                                 {{if .IsImporting}}
                                 <path class="flow-dots flow-grid flow-animate-forward" d="M420,160 L240,160" />
                                 {{else if .IsExporting}}
                                 <path class="flow-dots flow-grid flow-animate-backward" d="M420,160 L240,160" />
                                 {{end}}
-                            {{end}}{{end}}{{end}}
+                            {{end}}{{end}}
 
                             <!-- Animated flow dots: Center to House -->
-                            {{if .Battery}}{{if gt .Battery.LoadPower 0.0}}
-                            <path class="flow-dots flow-house flow-animate-backward" d="M240,50 L240,160" />
-                            {{end}}{{else}}{{if .Zappis}}{{with index .Zappis 0}}{{if gt .HouseConsumption 0.0}}
-                            <path class="flow-dots flow-house flow-animate-backward" d="M240,50 L240,160" />
-                            {{end}}{{end}}{{end}}{{end}}
+                            {{if .Zappis}}{{with index .Zappis 0}}
+                                {{if gt .HouseConsumption 0.0}}
+                                <path class="flow-dots flow-house flow-animate-backward" d="M240,50 L240,160" />
+                                {{end}}
+                            {{end}}{{end}}
 
                             <!-- Animated flow dots: Center to Zappi -->
                             {{if .Zappis}}{{with index .Zappis 0}}{{if gt .ChargerPower 0.0}}
@@ -689,50 +681,44 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <circle class="energy-node node-center" cx="240" cy="160" r="22" />
                             <text class="energy-node-icon" x="240" y="160" style="fill:#3fb950;">●</text>
 
-                            <!-- House node (top) -->
+                            <!-- House node (top) - Zappi house consumption minus battery power -->
                             <circle class="energy-node-bg" cx="240" cy="30" r="30" />
                             <circle class="energy-node node-house" cx="240" cy="30" r="30" />
                             <text x="240" y="28" class="energy-node-icon" style="fill:#da3cda; font-size:20px;">🏠</text>
-                            {{if .Battery}}
-                            <text x="300" y="25" class="energy-label">{{formatPower .Battery.LoadPower}}</text>
-                            <text x="300" y="40" class="energy-sublabel">House</text>
-                            {{else}}{{if .Zappis}}{{with index .Zappis 0}}
-                            <text x="300" y="25" class="energy-label">{{formatPower .HouseConsumption}}</text>
-                            <text x="300" y="40" class="energy-sublabel">House</text>
-                            {{end}}{{end}}{{end}}
+                            {{if .Zappis}}{{with index .Zappis 0}}
+                                <text x="300" y="25" class="energy-label" id="house-power">{{formatPower .HouseConsumption}}</text>
+                                <text x="300" y="40" class="energy-sublabel">House</text>
+                            {{end}}{{end}}
 
-                            <!-- Zappi node (left) -->
+                            <!-- Zappi/Car node (left) - show vehicle SOC and Zappi status -->
                             {{if .Zappis}}{{with index .Zappis 0}}
                             <circle class="energy-node-bg" cx="40" cy="160" r="30" />
                             <circle class="energy-node node-zappi" cx="40" cy="160" r="30" />
                             <text x="40" y="158" class="energy-node-icon" style="fill:#3b82f6; font-size:20px;">🚗</text>
-                            <text x="40" y="115" class="energy-label">{{formatPower .ChargerPower}}</text>
+                            {{if $.Vehicles}}{{with index $.Vehicles 0}}{{if .Charging}}{{if .Charging.Status}}
+                            <text x="40" y="100" class="energy-label">{{.Charging.Status.Battery.StateOfChargePercent}}%</text>
+                            {{end}}{{end}}{{end}}{{end}}
+                            <text x="40" y="115" class="energy-sublabel">{{formatPower .ChargerPower}}</text>
                             <text x="40" y="130" class="energy-sublabel">{{.Status}}</text>
                             {{end}}{{end}}
 
-                            <!-- Grid node (right) -->
+                            <!-- Grid node (right) - from Zappi -->
                             <circle class="energy-node-bg" cx="440" cy="160" r="30" />
                             <circle class="energy-node node-grid" cx="440" cy="160" r="30" />
                             <text x="440" y="158" class="energy-node-icon" style="fill:#f97316; font-size:20px;">🔌</text>
-                            {{if .Battery}}
-                            <text x="440" y="115" class="energy-label">{{formatPower (abs .Battery.GridPower)}}</text>
-                            <text x="440" y="130" class="energy-sublabel">{{if gt .Battery.GridPower 0.0}}Import{{else if lt .Battery.GridPower 0.0}}Export{{else}}--{{end}}</text>
-                            {{else}}{{if .Zappis}}{{with index .Zappis 0}}
+                            {{if .Zappis}}{{with index .Zappis 0}}
                             <text x="440" y="115" class="energy-label">{{formatPower (abs .GridPower)}}</text>
                             <text x="440" y="130" class="energy-sublabel">{{if .IsImporting}}Import{{else if .IsExporting}}Export{{else}}--{{end}}</text>
-                            {{end}}{{end}}{{end}}
+                            {{end}}{{end}}
 
-                            <!-- Solar node (bottom center) -->
+                            <!-- Solar node (bottom center) - from Zappi -->
                             <circle class="energy-node-bg" cx="240" cy="290" r="30" />
                             <circle class="energy-node node-solar" cx="240" cy="290" r="30" />
                             <text x="240" y="288" class="energy-node-icon" style="fill:#3fb950; font-size:20px;">☀️</text>
-                            {{if .Battery}}
-                            <text x="300" y="285" class="energy-label">{{formatPower .Battery.PVPower}}</text>
-                            <text x="300" y="300" class="energy-sublabel">Solar</text>
-                            {{else}}{{if .Zappis}}{{with index .Zappis 0}}
+                            {{if .Zappis}}{{with index .Zappis 0}}
                             <text x="300" y="285" class="energy-label">{{formatPower .SolarPower}}</text>
                             <text x="300" y="300" class="energy-sublabel">Solar</text>
-                            {{end}}{{end}}{{end}}
+                            {{end}}{{end}}
 
                             <!-- Battery node (bottom left) -->
                             {{if .Battery}}
@@ -1028,6 +1014,26 @@ const dashboardTemplate = `<!DOCTYPE html>
             renderChart();
             taxToggle.addEventListener('change', renderChart);
             window.addEventListener('resize', function() { chart.resize(); });
+        })();
+        {{end}}
+
+        // Update house power by subtracting battery power
+        {{if and .Zappis .Battery}}
+        (function() {
+            var housePowerEl = document.getElementById('house-power');
+            if (housePowerEl) {
+                var zappiHouse = {{with index .Zappis 0}}{{.HouseConsumption}}{{end}};
+                var batteryPower = {{.Battery.BatteryPower}};
+                var actualHouse = zappiHouse - batteryPower;
+
+                function formatPower(p) {
+                    if (p >= 1000 || p <= -1000) {
+                        return (p/1000).toFixed(2) + ' kW';
+                    }
+                    return Math.round(p) + ' W';
+                }
+                housePowerEl.textContent = formatPower(actualHouse);
+            }
         })();
         {{end}}
 
