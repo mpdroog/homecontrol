@@ -856,3 +856,19 @@ func (c *Client) GetHealth(vin string) (*Health, error) {
 
 	return &health, nil
 }
+
+// WakeUp wakes the vehicle up to get fresh data. Can be called max 3 times per day.
+func (c *Client) WakeUp(vin string) error {
+	resp, err := c.doRequest("POST", "/api/v1/vehicle-wakeup/"+vin+"?applyRequestLimiter=true", nil)
+	if err != nil {
+		return fmt.Errorf("waking up vehicle: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("wake up failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}

@@ -360,6 +360,8 @@ func (s *Server) handleSkodaControl(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = s.skodaClient.SetChargeLimit(vin, limit)
+	case "wakeup":
+		err = s.skodaClient.WakeUp(vin)
 	default:
 		http.Error(w, "Unknown action", http.StatusBadRequest)
 		return
@@ -532,57 +534,66 @@ const dashboardTemplate = `<!DOCTYPE html>
         .flow-zappi { stroke: #3b82f6; }
         .flow-house { stroke: #da3cda; }
         .flow-battery { stroke: #22d3ee; }
+        /* Summary bar */
+        .summary-bar { background: #161b22; border: 1px solid #30363d; border-radius: 0.5rem; }
+        .summary-item { text-align: center; padding: 0.75rem; }
+        .summary-value { font-size: 1.25rem; font-weight: 700; }
+        .summary-label { font-size: 0.75rem; color: #8b949e; }
+        /* Responsive Energy Flow */
+        @media (max-width: 576px) {
+            .energy-flow-svg { height: 280px; }
+            .energy-label { font-size: 11px; }
+            .energy-sublabel { font-size: 9px; }
+            .energy-node-icon { font-size: 16px; }
+        }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-dark bg-dark border-bottom border-secondary mb-4">
+    <nav class="navbar navbar-dark bg-dark border-bottom border-secondary mb-3">
         <div class="container-fluid">
             <span class="navbar-brand mb-0 h1">Home Control</span>
             <div class="d-flex align-items-center gap-3">
-                <small class="text-secondary">Updated: {{formatDateTime .LastUpdate}}</small>
+                {{if .CurrentPrice}}<span class="badge bg-secondary">{{formatPrice .CurrentPrice.PriceEUR}} /kWh</span>{{end}}
+                <small class="text-secondary d-none d-md-inline">Updated: {{formatDateTime .LastUpdate}}</small>
                 <a href="/api/refresh" class="btn btn-outline-secondary btn-sm">Refresh</a>
             </div>
         </div>
     </nav>
 
     <div class="container-fluid">
-        <div class="row g-4">
-            {{if .Prices}}
-            <div class="col-12 col-md-6 col-lg-4">
-                <div class="card h-100">
-                    <div class="card-header d-flex align-items-center gap-2">
-                        <span>⚡</span> <span>Energy Prices</span>
-                    </div>
-                    <ul class="list-group list-group-flush">
-                        {{if .CurrentPrice}}
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span class="text-secondary">Current ({{formatTime .CurrentPrice.Period}})</span>
-                            <strong>€{{formatPrice .CurrentPrice.PriceEUR}}/kWh</strong>
-                        </li>
-                        {{end}}
-                        {{if .NextPrice}}
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span class="text-secondary">Next Hour</span>
-                            <strong>€{{formatPrice .NextPrice.PriceEUR}}/kWh</strong>
-                        </li>
-                        {{end}}
-                        {{if .LowestPrice}}
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span class="text-secondary">Lowest ({{formatTime .LowestPrice.Period}})</span>
-                            <strong class="text-positive">€{{formatPrice .LowestPrice.PriceEUR}}/kWh</strong>
-                        </li>
-                        {{end}}
-                        {{if .HighestPrice}}
-                        <li class="list-group-item d-flex justify-content-between">
-                            <span class="text-secondary">Highest ({{formatTime .HighestPrice.Period}})</span>
-                            <strong class="text-negative">€{{formatPrice .HighestPrice.PriceEUR}}/kWh</strong>
-                        </li>
-                        {{end}}
-                    </ul>
-                </div>
+        <!-- Summary Bar -->
+        <div class="summary-bar d-flex flex-wrap justify-content-around mb-4 py-2">
+            {{if .CurrentPrice}}
+            <div class="summary-item">
+                <div class="summary-value">{{formatPrice .CurrentPrice.PriceEUR}}</div>
+                <div class="summary-label">/kWh now</div>
             </div>
             {{end}}
+            {{if .Zappis}}{{with index .Zappis 0}}
+            <div class="summary-item">
+                <div class="summary-value text-positive">{{formatPower .SolarPower}}</div>
+                <div class="summary-label">Solar</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-value {{if .IsImporting}}text-negative{{else if .IsExporting}}text-positive{{end}}">{{formatPower (abs .GridPower)}}</div>
+                <div class="summary-label">Grid {{if .IsImporting}}Import{{else if .IsExporting}}Export{{else}}--{{end}}</div>
+            </div>
+            {{end}}{{end}}
+            {{if .Battery}}
+            <div class="summary-item">
+                <div class="summary-value text-charging">{{printf "%.0f" .Battery.SOC}}%</div>
+                <div class="summary-label">Battery</div>
+            </div>
+            {{end}}
+            {{if .Vehicles}}{{with index .Vehicles 0}}{{if .Charging}}{{if .Charging.Status}}
+            <div class="summary-item">
+                <div class="summary-value">{{.Charging.Status.Battery.StateOfChargePercent}}%</div>
+                <div class="summary-label">Car</div>
+            </div>
+            {{end}}{{end}}{{end}}{{end}}
+        </div>
 
+        <div class="row g-4">
             {{if .Battery}}
             <div class="col-12 col-md-6 col-lg-4">
                 <div class="card h-100">
@@ -597,24 +608,7 @@ const dashboardTemplate = `<!DOCTYPE html>
                         <div class="progress mb-3" style="height: 8px;">
                             <div class="progress-bar soc-gradient" style="width: {{printf "%.0f" .Battery.SOC}}%"></div>
                         </div>
-                        <div class="power-flow">
-                            <div class="power-item">
-                                <span class="power-icon">☀️</span>
-                                <span class="power-value text-positive">{{formatPower .Battery.PVPower}}</span>
-                                <span class="power-label">Solar</span>
-                            </div>
-                            <div class="power-item">
-                                <span class="power-icon">🏠</span>
-                                <span class="power-value">{{formatPower .Battery.LoadPower}}</span>
-                                <span class="power-label">Load</span>
-                            </div>
-                            <div class="power-item">
-                                <span class="power-icon">🔌</span>
-                                <span class="power-value {{if gt .Battery.GridPower 0.0}}text-negative{{else if lt .Battery.GridPower 0.0}}text-positive{{end}}">{{formatPower (abs .Battery.GridPower)}}</span>
-                                <span class="power-label">Grid ({{powerDirection .Battery.GridPower}})</span>
-                            </div>
-                        </div>
-                        <div class="d-flex justify-content-between border-top border-secondary pt-2">
+                        <div class="d-flex justify-content-between">
                             <span class="text-secondary">Battery Power</span>
                             <strong class="{{if gt .Battery.BatteryPower 0.0}}text-charging{{else if lt .Battery.BatteryPower 0.0}}text-negative{{end}}">{{formatPower (abs .Battery.BatteryPower)}} ({{batteryDirection .Battery.BatteryPower}})</strong>
                         </div>
@@ -625,7 +619,7 @@ const dashboardTemplate = `<!DOCTYPE html>
 
             <!-- Energy Flow Diagram -->
             {{if or .Battery .Zappis}}
-            <div class="col-12 col-lg-8">
+            <div class="col-12">
                 <div class="card">
                     <div class="card-header d-flex align-items-center gap-2">
                         <span>⚡</span> <span>Energy Flow</span>
@@ -756,23 +750,6 @@ const dashboardTemplate = `<!DOCTYPE html>
                                 <strong>{{.PlugStatus}}</strong>
                             </li>
                         </ul>
-                        <div class="power-flow">
-                            <div class="power-item">
-                                <span class="power-icon">☀️</span>
-                                <span class="power-value text-positive">{{formatPower .SolarPower}}</span>
-                                <span class="power-label">Solar</span>
-                            </div>
-                            <div class="power-item">
-                                <span class="power-icon">🏠</span>
-                                <span class="power-value">{{formatPower .HouseConsumption}}</span>
-                                <span class="power-label">House</span>
-                            </div>
-                            <div class="power-item">
-                                <span class="power-icon">🔌</span>
-                                <span class="power-value {{if .IsImporting}}text-negative{{else if .IsExporting}}text-positive{{end}}">{{formatPower (abs .GridPower)}}</span>
-                                <span class="power-label">Grid{{if .IsImporting}} (import){{else if .IsExporting}} (export){{end}}</span>
-                            </div>
-                        </div>
                         <ul class="list-group list-group-flush mb-3">
                             <li class="list-group-item d-flex justify-content-between px-0">
                                 <span class="text-secondary">EV Charger</span>
@@ -848,6 +825,7 @@ const dashboardTemplate = `<!DOCTYPE html>
                         <div class="d-flex flex-wrap gap-2">
                             <a href="/api/skoda?action=start&vin={{.Vehicle.VIN}}" class="btn btn-success btn-sm">Start Charging</a>
                             <a href="/api/skoda?action=stop&vin={{.Vehicle.VIN}}" class="btn btn-danger btn-sm">Stop Charging</a>
+                            <a href="/api/skoda?action=wakeup&vin={{.Vehicle.VIN}}" class="btn btn-outline-warning btn-sm" title="Max 3x per day">Wake Up</a>
                         </div>
                     </div>
                 </div>
