@@ -574,75 +574,10 @@ const dashboardTemplate = `<!DOCTYPE html>
             height: 200px;
             margin-top: 15px;
         }
-        .price-chart {
-            display: flex;
-            align-items: flex-end;
-            height: 150px;
-            gap: 2px;
-            padding: 10px 0;
-            border-bottom: 1px solid #333;
+        .echart {
+            width: 100%;
+            height: 280px;
         }
-        .price-bar {
-            flex: 1;
-            min-width: 8px;
-            border-radius: 2px 2px 0 0;
-            position: relative;
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-        .price-bar:hover {
-            opacity: 0.8;
-        }
-        .price-bar.current {
-            box-shadow: 0 0 8px rgba(255,255,255,0.5);
-            border: 2px solid #fff;
-            border-bottom: none;
-        }
-        .price-bar .tooltip {
-            display: none;
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #000;
-            color: #fff;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            white-space: nowrap;
-            z-index: 10;
-            margin-bottom: 4px;
-        }
-        .price-bar:hover .tooltip {
-            display: block;
-        }
-        .price-labels {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.7rem;
-            color: #666;
-            padding-top: 4px;
-        }
-        .price-legend {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            margin-top: 10px;
-            font-size: 0.8rem;
-        }
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        .legend-color {
-            width: 12px;
-            height: 12px;
-            border-radius: 2px;
-        }
-        .legend-color.cheap { background: #4cd137; }
-        .legend-color.medium { background: #fbc531; }
-        .legend-color.expensive { background: #e84118; }
         .card.wide {
             grid-column: span 2;
         }
@@ -828,85 +763,187 @@ const dashboardTemplate = `<!DOCTYPE html>
 
         {{if .Prices}}
         <div class="card wide">
-            <h2><span class="icon">📊</span> Today's Prices</h2>
-            <div class="price-chart" id="today-chart">
-                {{range .Prices.Today}}
-                <div class="price-bar {{if eq (formatTime .Period) (formatTime $.CurrentPrice.Period)}}current{{end}}"
-                     data-price="{{.PriceEUR}}"
-                     data-hour="{{formatTime .Period}}"
-                     data-low="{{$.LowestPrice.PriceEUR}}"
-                     data-high="{{$.HighestPrice.PriceEUR}}">
-                    <span class="tooltip">{{formatTime .Period}}: €{{formatPrice .PriceEUR}}/kWh</span>
-                </div>
-                {{end}}
+            <h2><span class="icon">📊</span> Energy Prices</h2>
+            <div style="margin-bottom: 10px;">
+                <label style="cursor: pointer; color: #888; font-size: 0.9rem;">
+                    <input type="checkbox" id="tax-toggle" style="margin-right: 6px;">
+                    Include 21% BTW
+                </label>
             </div>
-            <div class="price-labels">
-                <span>00:00</span>
-                <span>06:00</span>
-                <span>12:00</span>
-                <span>18:00</span>
-                <span>23:00</span>
-            </div>
-            <div class="price-legend">
-                <div class="legend-item"><div class="legend-color cheap"></div> Cheap</div>
-                <div class="legend-item"><div class="legend-color medium"></div> Medium</div>
-                <div class="legend-item"><div class="legend-color expensive"></div> Expensive</div>
-            </div>
+            <div id="price-chart" class="echart"></div>
         </div>
-
-        {{if .Prices.Tomorrow}}
-        <div class="card wide">
-            <h2><span class="icon">📊</span> Tomorrow's Prices</h2>
-            <div class="price-chart" id="tomorrow-chart">
-                {{range .Prices.Tomorrow}}
-                <div class="price-bar"
-                     data-price="{{.PriceEUR}}"
-                     data-hour="{{formatTime .Period}}"
-                     data-low="{{$.LowestPrice.PriceEUR}}"
-                     data-high="{{$.HighestPrice.PriceEUR}}">
-                    <span class="tooltip">{{formatTime .Period}}: €{{formatPrice .PriceEUR}}/kWh</span>
-                </div>
-                {{end}}
-            </div>
-            <div class="price-labels">
-                <span>00:00</span>
-                <span>06:00</span>
-                <span>12:00</span>
-                <span>18:00</span>
-                <span>23:00</span>
-            </div>
-        </div>
-        {{end}}
         {{end}}
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
     <script>
-        // Render price bars
-        document.querySelectorAll('.price-bar').forEach(function(bar) {
-            var price = parseFloat(bar.dataset.price);
-            var low = parseFloat(bar.dataset.low);
-            var high = parseFloat(bar.dataset.high);
+        {{if .Prices}}
+        (function() {
+            var chartDom = document.getElementById('price-chart');
+            var chart = echarts.init(chartDom, 'dark');
+            var taxToggle = document.getElementById('tax-toggle');
+            var TAX_RATE = 1.21;
 
-            // Calculate height (min 10%, max 100%)
-            var range = high - low;
-            var heightPct = range > 0 ? ((price - low) / range * 80) + 20 : 50;
-            bar.style.height = heightPct + '%';
+            // Raw price data with day labels
+            var allRaw = [
+                {{range .Prices.Today}}
+                { hour: '{{formatTime .Period}}', price: {{printf "%.6f" .PricePerKWh}}, day: 'Today' },
+                {{end}}
+                {{if .Prices.Tomorrow}}
+                {{range .Prices.Tomorrow}}
+                { hour: '{{formatTime .Period}}', price: {{printf "%.6f" .PricePerKWh}}, day: 'Tomorrow' },
+                {{end}}
+                {{end}}
+            ];
 
-            // Calculate color based on position in range
-            var position = range > 0 ? (price - low) / range : 0.5;
-            var color;
-            if (position < 0.33) {
-                // Green (cheap)
-                color = '#4cd137';
-            } else if (position < 0.66) {
-                // Yellow (medium)
-                color = '#fbc531';
-            } else {
-                // Red (expensive)
-                color = '#e84118';
+            var currentHour = '{{if .CurrentPrice}}{{formatTime .CurrentPrice.Period}}{{end}}';
+            var todayCount = {{len .Prices.Today}};
+            var hasTomorrow = allRaw.length > todayCount;
+
+            function renderChart() {
+                var includeTax = taxToggle.checked;
+                var taxMult = includeTax ? TAX_RATE : 1;
+
+                // Apply tax to all data
+                var allData = allRaw.map(function(d) {
+                    return { hour: d.hour, price: d.price * taxMult, day: d.day };
+                });
+
+                // Find min/max for coloring
+                var prices = allData.map(function(d) { return d.price; });
+                var minPrice = Math.min.apply(null, prices);
+                var maxPrice = Math.max.apply(null, prices);
+                var range = maxPrice - minPrice;
+
+                function getColor(price) {
+                    if (range === 0) return '#fbc531';
+                    var pos = (price - minPrice) / range;
+                    if (pos < 0.33) return '#4cd137';
+                    if (pos < 0.66) return '#fbc531';
+                    return '#e84118';
+                }
+
+                // Build x-axis labels and bar data
+                var xLabels = [];
+                var barData = [];
+
+                allData.forEach(function(d, i) {
+                    var isCurrent = (d.day === 'Today' && d.hour === currentHour);
+
+                    // Label format: show day at 00:00, otherwise just hour
+                    if (d.hour === '00:00') {
+                        xLabels.push(d.day + '\n00:00');
+                    } else {
+                        xLabels.push(d.hour);
+                    }
+
+                    barData.push({
+                        value: d.price,
+                        day: d.day,
+                        hour: d.hour,
+                        itemStyle: {
+                            color: getColor(d.price),
+                            borderRadius: [2, 2, 0, 0],
+                            borderColor: isCurrent ? '#fff' : 'transparent',
+                            borderWidth: isCurrent ? 2 : 0
+                        }
+                    });
+                });
+
+                // Mark line to separate days
+                var markLineData = [];
+                if (hasTomorrow) {
+                    markLineData.push({
+                        xAxis: todayCount - 0.5,
+                        lineStyle: { color: '#888', type: 'solid', width: 2 }
+                    });
+                }
+
+                var option = {
+                    backgroundColor: 'transparent',
+                    tooltip: {
+                        trigger: 'item',
+                        backgroundColor: 'rgba(0,0,0,0.9)',
+                        borderColor: '#555',
+                        padding: [10, 14],
+                        textStyle: { color: '#fff', fontSize: 13 },
+                        formatter: function(params) {
+                            var d = params.data;
+                            var taxLabel = includeTax ? ' (incl. BTW)' : ' (excl. BTW)';
+                            return '<div style="font-weight:600; margin-bottom:4px;">' + d.day + ' ' + d.hour + '</div>' +
+                                   '<span style="font-size:1.3em; font-weight:700; color:' + d.itemStyle.color + '">€' + d.value.toFixed(4) + '</span>' +
+                                   '<span style="color:#aaa"> /kWh</span>' +
+                                   '<div style="color:#888; font-size:11px; margin-top:4px;">' + taxLabel + '</div>';
+                        }
+                    },
+                    grid: {
+                        left: 50,
+                        right: 15,
+                        top: 20,
+                        bottom: 50
+                    },
+                    xAxis: {
+                        type: 'category',
+                        data: xLabels,
+                        axisLabel: {
+                            color: '#999',
+                            fontSize: 11,
+                            interval: function(index) {
+                                // Show label every 4 hours, and at day boundaries
+                                var hour = allData[index].hour;
+                                if (hour === '00:00') return true;
+                                var hourNum = parseInt(hour.split(':')[0]);
+                                return hourNum % 4 === 0;
+                            }
+                        },
+                        axisLine: { lineStyle: { color: '#444' } },
+                        axisTick: { show: false }
+                    },
+                    yAxis: {
+                        type: 'value',
+                        name: includeTax ? '€/kWh +BTW' : '€/kWh',
+                        nameTextStyle: { color: '#888', fontSize: 11 },
+                        nameGap: 8,
+                        axisLabel: {
+                            color: '#888',
+                            fontSize: 11,
+                            formatter: function(v) { return v.toFixed(2); }
+                        },
+                        axisLine: { show: false },
+                        splitLine: { lineStyle: { color: '#2a2a4a' } }
+                    },
+                    series: [{
+                        type: 'bar',
+                        data: barData,
+                        barCategoryGap: '20%',
+                        markLine: {
+                            silent: true,
+                            symbol: 'none',
+                            label: {
+                                show: hasTomorrow,
+                                position: 'insideStartTop',
+                                formatter: 'Tomorrow',
+                                color: '#888',
+                                fontSize: 10
+                            },
+                            data: markLineData
+                        }
+                    }]
+                };
+
+                chart.setOption(option, true);
             }
-            bar.style.backgroundColor = color;
-        });
+
+            // Initial render
+            renderChart();
+
+            // Toggle tax
+            taxToggle.addEventListener('change', renderChart);
+
+            // Resize handler
+            window.addEventListener('resize', function() { chart.resize(); });
+        })();
+        {{end}}
 
         // Auto-refresh every 60 seconds
         setTimeout(function() {
