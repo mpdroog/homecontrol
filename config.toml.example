@@ -6,3 +6,7 @@ password = "your-password"
 appid = "your-app-id"
 appsecret = "your-app-secret"
 sn = "ALD007"
+
+[myenergi]
+hubserial = "12345678"
+password = "your-app-password"

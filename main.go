@@ -8,13 +8,15 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/mpdroog/homecontrol/alphaess"
+	"github.com/mpdroog/homecontrol/myenergi"
 	"github.com/mpdroog/homecontrol/myskoda"
 	"github.com/mpdroog/homecontrol/nordpool"
 )
 
 type Config struct {
-	MySkoda  MySkodaConfig  `toml:"myskoda"`
-	AlphaESS AlphaESSConfig `toml:"alphaess"`
+	MySkoda   MySkodaConfig   `toml:"myskoda"`
+	AlphaESS  AlphaESSConfig  `toml:"alphaess"`
+	MyEnergi  MyEnergiConfig  `toml:"myenergi"`
 }
 
 type MySkodaConfig struct {
@@ -28,6 +30,11 @@ type AlphaESSConfig struct {
 	SN        string `toml:"sn"`
 }
 
+type MyEnergiConfig struct {
+	HubSerial string `toml:"hubserial"`
+	Password  string `toml:"password"`
+}
+
 func usage() {
 	fmt.Fprintf(os.Stderr, `Usage: homecontrol [options] [command]
 
@@ -38,6 +45,7 @@ Commands:
   limit [VIN] PCT     Set charge limit to PCT percent
   prices              Show hourly energy prices (today & tomorrow)
   battery             Show AlphaESS home battery status
+  zappi               Show Zappi EV charger status
 
 Options:
 `)
@@ -86,6 +94,21 @@ func main() {
 			aClient.SetSN(cfg.AlphaESS.SN)
 		}
 		showBatteryStatus(aClient)
+		return
+	}
+
+	// Handle zappi command (myenergi)
+	if cmd == "zappi" {
+		if cfg.MyEnergi.HubSerial == "" || cfg.MyEnergi.Password == "" {
+			fmt.Fprintln(os.Stderr, "Error: myenergi.hubserial and myenergi.password must be set in config.toml")
+			os.Exit(1)
+		}
+		if *debug {
+			fmt.Printf("[DEBUG] MyEnergi config: hubserial=%s\n", cfg.MyEnergi.HubSerial)
+		}
+		meClient := myenergi.NewClient(cfg.MyEnergi.HubSerial, cfg.MyEnergi.Password)
+		meClient.SetDebug(*debug)
+		showZappiStatus(meClient)
 		return
 	}
 
@@ -410,5 +433,56 @@ func showBatteryStatus(client *alphaess.Client) {
 			fmt.Printf("  Period 2:       %s - %s\n", dischargeConfig.TimeDisf2, dischargeConfig.TimeDise2)
 		}
 		fmt.Printf("  Min SOC:        %.0f %%\n", dischargeConfig.BatUseCap)
+	}
+}
+
+func showZappiStatus(client *myenergi.Client) {
+	fmt.Println("Fetching Zappi status...")
+
+	zappis, err := client.GetZappiStatus()
+	if err != nil {
+		log.Fatalf("Failed to get Zappi status: %v", err)
+	}
+
+	if len(zappis) == 0 {
+		fmt.Println("No Zappi devices found")
+		return
+	}
+
+	fmt.Printf("\nFound %d Zappi device(s):\n", len(zappis))
+
+	for _, z := range zappis {
+		fmt.Printf("\n=== Zappi %d ===\n", z.Serial)
+
+		fmt.Printf("\n[Status]\n")
+		fmt.Printf("  Mode:           %s\n", z.Mode)
+		fmt.Printf("  Status:         %s\n", z.Status)
+		fmt.Printf("  Plug:           %s\n", z.PlugStatus.String())
+
+		fmt.Printf("\n[Power]\n")
+		fmt.Printf("  Charger Power:  %.0f W\n", z.ChargerPower)
+		fmt.Printf("  Grid Power:     %.0f W\n", z.GridPower)
+		fmt.Printf("  Generated:      %.0f W\n", z.GeneratedPower)
+		if z.Diverted > 0 {
+			fmt.Printf("  Diverted:       %.0f W\n", z.Diverted)
+		}
+
+		fmt.Printf("\n[Session]\n")
+		fmt.Printf("  Charge Added:   %.2f kWh\n", z.ChargeAdded)
+		if z.BoostKWh > 0 {
+			fmt.Printf("  Boost Target:   %.1f kWh\n", z.BoostKWh)
+		}
+		if z.SmartBoostHour > 0 || z.SmartBoostMin > 0 {
+			fmt.Printf("  Smart Boost:    Complete by %02d:%02d\n", z.SmartBoostHour, z.SmartBoostMin)
+		}
+
+		fmt.Printf("\n[Settings]\n")
+		fmt.Printf("  Min Green:      %d %%\n", z.MinGreenLevel)
+		if z.Voltage > 0 {
+			fmt.Printf("  Voltage:        %.1f V\n", z.Voltage/10)
+		}
+		if z.Frequency > 0 {
+			fmt.Printf("  Frequency:      %.2f Hz\n", z.Frequency/100)
+		}
 	}
 }
