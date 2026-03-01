@@ -251,6 +251,9 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		"divideBy": func(a int, b float64) float64 {
 			return float64(a) / b
 		},
+		"subtract": func(a, b float64) float64 {
+			return a - b
+		},
 	}).Parse(dashboardTemplate))
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -463,6 +466,72 @@ const dashboardTemplate = `<!DOCTYPE html>
             background: linear-gradient(90deg, #f85149, #d29922, #3fb950);
             border-radius: 0.25rem;
         }
+        /* Energy Flow Diagram */
+        .energy-flow-svg { width: 100%; height: 320px; }
+        .energy-node {
+            fill: none;
+            stroke-width: 3;
+        }
+        .energy-node-bg {
+            fill: #161b22;
+        }
+        .energy-node-icon {
+            fill: #8b949e;
+            font-size: 24px;
+            dominant-baseline: central;
+            text-anchor: middle;
+        }
+        .energy-label {
+            fill: #c9d1d9;
+            font-size: 13px;
+            font-weight: 600;
+            text-anchor: middle;
+        }
+        .energy-sublabel {
+            fill: #8b949e;
+            font-size: 11px;
+            text-anchor: middle;
+        }
+        .flow-line {
+            fill: none;
+            stroke: #30363d;
+            stroke-width: 3;
+        }
+        .flow-line-active {
+            stroke-width: 3;
+            stroke-linecap: round;
+        }
+        .flow-dots {
+            fill: none;
+            stroke-width: 4;
+            stroke-linecap: round;
+            stroke-dasharray: 0 12;
+        }
+        @keyframes flowForward {
+            0% { stroke-dashoffset: 24; }
+            100% { stroke-dashoffset: 0; }
+        }
+        @keyframes flowBackward {
+            0% { stroke-dashoffset: 0; }
+            100% { stroke-dashoffset: 24; }
+        }
+        .flow-animate-forward {
+            animation: flowForward 0.8s linear infinite;
+        }
+        .flow-animate-backward {
+            animation: flowBackward 0.8s linear infinite;
+        }
+        .node-house { stroke: #da3cda; }
+        .node-zappi { stroke: #3b82f6; }
+        .node-grid { stroke: #f97316; }
+        .node-solar { stroke: #3fb950; }
+        .node-battery { stroke: #22d3ee; }
+        .node-center { stroke: #3fb950; }
+        .flow-grid { stroke: #f97316; }
+        .flow-solar { stroke: #3fb950; }
+        .flow-zappi { stroke: #3b82f6; }
+        .flow-house { stroke: #da3cda; }
+        .flow-battery { stroke: #22d3ee; }
     </style>
 </head>
 <body>
@@ -549,6 +618,132 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <span class="text-secondary">Battery Power</span>
                             <strong class="{{if gt .Battery.BatteryPower 0.0}}text-charging{{else if lt .Battery.BatteryPower 0.0}}text-negative{{end}}">{{formatPower (abs .Battery.BatteryPower)}} ({{batteryDirection .Battery.BatteryPower}})</strong>
                         </div>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+
+            <!-- Energy Flow Diagram -->
+            {{if or .Battery .Zappis}}
+            <div class="col-12 col-lg-8">
+                <div class="card">
+                    <div class="card-header d-flex align-items-center gap-2">
+                        <span>⚡</span> <span>Energy Flow</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <svg class="energy-flow-svg" viewBox="0 0 480 320">
+                            <!-- Flow lines (background) -->
+                            <path class="flow-line" d="M240,160 L240,50" />
+                            <path class="flow-line" d="M240,160 L60,160" />
+                            <path class="flow-line" d="M240,160 L420,160" />
+                            <path class="flow-line" d="M240,160 L240,270" />
+                            {{if .Battery}}
+                            <path class="flow-line" d="M240,160 L90,260" />
+                            {{end}}
+
+                            <!-- Animated flow dots: Solar to Center -->
+                            {{if .Battery}}{{if gt .Battery.PVPower 0.0}}
+                            <path class="flow-dots flow-solar flow-animate-forward" d="M240,270 L240,160" />
+                            {{end}}{{else}}{{if .Zappis}}{{with index .Zappis 0}}{{if gt .SolarPower 0.0}}
+                            <path class="flow-dots flow-solar flow-animate-forward" d="M240,270 L240,160" />
+                            {{end}}{{end}}{{end}}{{end}}
+
+                            <!-- Animated flow dots: Grid -->
+                            {{if .Battery}}
+                                {{if gt .Battery.GridPower 0.0}}
+                                <path class="flow-dots flow-grid flow-animate-forward" d="M420,160 L240,160" />
+                                {{else if lt .Battery.GridPower 0.0}}
+                                <path class="flow-dots flow-grid flow-animate-backward" d="M420,160 L240,160" />
+                                {{end}}
+                            {{else}}{{if .Zappis}}{{with index .Zappis 0}}
+                                {{if .IsImporting}}
+                                <path class="flow-dots flow-grid flow-animate-forward" d="M420,160 L240,160" />
+                                {{else if .IsExporting}}
+                                <path class="flow-dots flow-grid flow-animate-backward" d="M420,160 L240,160" />
+                                {{end}}
+                            {{end}}{{end}}{{end}}
+
+                            <!-- Animated flow dots: Center to House -->
+                            {{if .Battery}}{{if gt .Battery.LoadPower 0.0}}
+                            <path class="flow-dots flow-house flow-animate-backward" d="M240,50 L240,160" />
+                            {{end}}{{else}}{{if .Zappis}}{{with index .Zappis 0}}{{if gt .HouseConsumption 0.0}}
+                            <path class="flow-dots flow-house flow-animate-backward" d="M240,50 L240,160" />
+                            {{end}}{{end}}{{end}}{{end}}
+
+                            <!-- Animated flow dots: Center to Zappi -->
+                            {{if .Zappis}}{{with index .Zappis 0}}{{if gt .ChargerPower 0.0}}
+                            <path class="flow-dots flow-zappi flow-animate-backward" d="M60,160 L240,160" />
+                            {{end}}{{end}}{{end}}
+
+                            <!-- Animated flow dots: Battery -->
+                            {{if .Battery}}
+                                {{if gt .Battery.BatteryPower 0.0}}
+                                <path class="flow-dots flow-battery flow-animate-backward" d="M90,260 L240,160" />
+                                {{else if lt .Battery.BatteryPower 0.0}}
+                                <path class="flow-dots flow-battery flow-animate-forward" d="M90,260 L240,160" />
+                                {{end}}
+                            {{end}}
+
+                            <!-- Center hub -->
+                            <circle class="energy-node-bg" cx="240" cy="160" r="22" />
+                            <circle class="energy-node node-center" cx="240" cy="160" r="22" />
+                            <text class="energy-node-icon" x="240" y="160" style="fill:#3fb950;">●</text>
+
+                            <!-- House node (top) -->
+                            <circle class="energy-node-bg" cx="240" cy="30" r="30" />
+                            <circle class="energy-node node-house" cx="240" cy="30" r="30" />
+                            <text x="240" y="28" class="energy-node-icon" style="fill:#da3cda; font-size:20px;">🏠</text>
+                            {{if .Battery}}
+                            <text x="300" y="25" class="energy-label">{{formatPower .Battery.LoadPower}}</text>
+                            <text x="300" y="40" class="energy-sublabel">House</text>
+                            {{else}}{{if .Zappis}}{{with index .Zappis 0}}
+                            <text x="300" y="25" class="energy-label">{{formatPower .HouseConsumption}}</text>
+                            <text x="300" y="40" class="energy-sublabel">House</text>
+                            {{end}}{{end}}{{end}}
+
+                            <!-- Zappi node (left) -->
+                            {{if .Zappis}}{{with index .Zappis 0}}
+                            <circle class="energy-node-bg" cx="40" cy="160" r="30" />
+                            <circle class="energy-node node-zappi" cx="40" cy="160" r="30" />
+                            <text x="40" y="158" class="energy-node-icon" style="fill:#3b82f6; font-size:20px;">🚗</text>
+                            <text x="40" y="115" class="energy-label">{{formatPower .ChargerPower}}</text>
+                            <text x="40" y="130" class="energy-sublabel">{{.Status}}</text>
+                            {{end}}{{end}}
+
+                            <!-- Grid node (right) -->
+                            <circle class="energy-node-bg" cx="440" cy="160" r="30" />
+                            <circle class="energy-node node-grid" cx="440" cy="160" r="30" />
+                            <text x="440" y="158" class="energy-node-icon" style="fill:#f97316; font-size:20px;">🔌</text>
+                            {{if .Battery}}
+                            <text x="440" y="115" class="energy-label">{{formatPower (abs .Battery.GridPower)}}</text>
+                            <text x="440" y="130" class="energy-sublabel">{{if gt .Battery.GridPower 0.0}}Import{{else if lt .Battery.GridPower 0.0}}Export{{else}}--{{end}}</text>
+                            {{else}}{{if .Zappis}}{{with index .Zappis 0}}
+                            <text x="440" y="115" class="energy-label">{{formatPower (abs .GridPower)}}</text>
+                            <text x="440" y="130" class="energy-sublabel">{{if .IsImporting}}Import{{else if .IsExporting}}Export{{else}}--{{end}}</text>
+                            {{end}}{{end}}{{end}}
+
+                            <!-- Solar node (bottom center) -->
+                            <circle class="energy-node-bg" cx="240" cy="290" r="30" />
+                            <circle class="energy-node node-solar" cx="240" cy="290" r="30" />
+                            <text x="240" y="288" class="energy-node-icon" style="fill:#3fb950; font-size:20px;">☀️</text>
+                            {{if .Battery}}
+                            <text x="300" y="285" class="energy-label">{{formatPower .Battery.PVPower}}</text>
+                            <text x="300" y="300" class="energy-sublabel">Solar</text>
+                            {{else}}{{if .Zappis}}{{with index .Zappis 0}}
+                            <text x="300" y="285" class="energy-label">{{formatPower .SolarPower}}</text>
+                            <text x="300" y="300" class="energy-sublabel">Solar</text>
+                            {{end}}{{end}}{{end}}
+
+                            <!-- Battery node (bottom left) -->
+                            {{if .Battery}}
+                            <circle class="energy-node-bg" cx="70" cy="270" r="30" />
+                            <circle class="energy-node node-battery" cx="70" cy="270" r="30" />
+                            <text x="70" y="268" class="energy-node-icon" style="fill:#22d3ee; font-size:20px;">🔋</text>
+                            <text x="130" y="255" class="energy-label">{{printf "%.0f" .Battery.SOC}}%</text>
+                            <text x="130" y="270" class="energy-sublabel">{{formatPower (abs .Battery.BatteryPower)}}</text>
+                            <text x="130" y="285" class="energy-sublabel">{{if gt .Battery.BatteryPower 0.0}}Charging{{else if lt .Battery.BatteryPower 0.0}}Discharging{{else}}Idle{{end}}</text>
+                            {{end}}
+                        </svg>
                     </div>
                 </div>
             </div>

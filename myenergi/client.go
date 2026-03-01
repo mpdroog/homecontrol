@@ -49,9 +49,10 @@ func (m ZappiMode) String() string {
 type ZappiStatus int
 
 const (
-	ZappiStatusPaused   ZappiStatus = 1
-	ZappiStatusCharging ZappiStatus = 3
-	ZappiStatusComplete ZappiStatus = 5
+	ZappiStatusPaused       ZappiStatus = 1
+	ZappiStatusCharging     ZappiStatus = 3
+	ZappiStatusFastCharging ZappiStatus = 4
+	ZappiStatusComplete     ZappiStatus = 5
 )
 
 func (s ZappiStatus) String() string {
@@ -60,6 +61,8 @@ func (s ZappiStatus) String() string {
 		return "Paused"
 	case ZappiStatusCharging:
 		return "Charging"
+	case ZappiStatusFastCharging:
+		return "Fast Charging"
 	case ZappiStatusComplete:
 		return "Complete"
 	default:
