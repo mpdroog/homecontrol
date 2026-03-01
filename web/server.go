@@ -574,9 +574,82 @@ const dashboardTemplate = `<!DOCTYPE html>
             height: 200px;
             margin-top: 15px;
         }
+        .price-chart {
+            display: flex;
+            align-items: flex-end;
+            height: 150px;
+            gap: 2px;
+            padding: 10px 0;
+            border-bottom: 1px solid #333;
+        }
+        .price-bar {
+            flex: 1;
+            min-width: 8px;
+            border-radius: 2px 2px 0 0;
+            position: relative;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .price-bar:hover {
+            opacity: 0.8;
+        }
+        .price-bar.current {
+            box-shadow: 0 0 8px rgba(255,255,255,0.5);
+            border: 2px solid #fff;
+            border-bottom: none;
+        }
+        .price-bar .tooltip {
+            display: none;
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #000;
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            z-index: 10;
+            margin-bottom: 4px;
+        }
+        .price-bar:hover .tooltip {
+            display: block;
+        }
+        .price-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: #666;
+            padding-top: 4px;
+        }
+        .price-legend {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 10px;
+            font-size: 0.8rem;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+        .legend-color.cheap { background: #4cd137; }
+        .legend-color.medium { background: #fbc531; }
+        .legend-color.expensive { background: #e84118; }
+        .card.wide {
+            grid-column: span 2;
+        }
         @media (max-width: 768px) {
             .grid { grid-template-columns: 1fr; }
             body { padding: 10px; }
+            .card.wide { grid-column: span 1; }
         }
     </style>
 </head>
@@ -737,28 +810,53 @@ const dashboardTemplate = `<!DOCTYPE html>
         {{end}}
 
         {{if .Prices}}
-        <div class="card">
+        <div class="card wide">
             <h2><span class="icon">📊</span> Today's Prices</h2>
-            <div class="price-list">
+            <div class="price-chart" id="today-chart">
                 {{range .Prices.Today}}
-                <div class="price-row {{if eq (formatTime .Period) (formatTime $.CurrentPrice.Period)}}current{{end}} {{if eq .PriceEUR $.LowestPrice.PriceEUR}}low{{end}} {{if eq .PriceEUR $.HighestPrice.PriceEUR}}high{{end}}">
-                    <span>{{formatTime .Period}}</span>
-                    <span>€{{formatPrice .PriceEUR}}/kWh</span>
+                <div class="price-bar {{if eq (formatTime .Period) (formatTime $.CurrentPrice.Period)}}current{{end}}"
+                     data-price="{{.PriceEUR}}"
+                     data-hour="{{formatTime .Period}}"
+                     data-low="{{$.LowestPrice.PriceEUR}}"
+                     data-high="{{$.HighestPrice.PriceEUR}}">
+                    <span class="tooltip">{{formatTime .Period}}: €{{formatPrice .PriceEUR}}/kWh</span>
                 </div>
                 {{end}}
+            </div>
+            <div class="price-labels">
+                <span>00:00</span>
+                <span>06:00</span>
+                <span>12:00</span>
+                <span>18:00</span>
+                <span>23:00</span>
+            </div>
+            <div class="price-legend">
+                <div class="legend-item"><div class="legend-color cheap"></div> Cheap</div>
+                <div class="legend-item"><div class="legend-color medium"></div> Medium</div>
+                <div class="legend-item"><div class="legend-color expensive"></div> Expensive</div>
             </div>
         </div>
 
         {{if .Prices.Tomorrow}}
-        <div class="card">
+        <div class="card wide">
             <h2><span class="icon">📊</span> Tomorrow's Prices</h2>
-            <div class="price-list">
+            <div class="price-chart" id="tomorrow-chart">
                 {{range .Prices.Tomorrow}}
-                <div class="price-row {{if eq .PriceEUR $.LowestPrice.PriceEUR}}low{{end}} {{if eq .PriceEUR $.HighestPrice.PriceEUR}}high{{end}}">
-                    <span>{{formatTime .Period}}</span>
-                    <span>€{{formatPrice .PriceEUR}}/kWh</span>
+                <div class="price-bar"
+                     data-price="{{.PriceEUR}}"
+                     data-hour="{{formatTime .Period}}"
+                     data-low="{{$.LowestPrice.PriceEUR}}"
+                     data-high="{{$.HighestPrice.PriceEUR}}">
+                    <span class="tooltip">{{formatTime .Period}}: €{{formatPrice .PriceEUR}}/kWh</span>
                 </div>
                 {{end}}
+            </div>
+            <div class="price-labels">
+                <span>00:00</span>
+                <span>06:00</span>
+                <span>12:00</span>
+                <span>18:00</span>
+                <span>23:00</span>
             </div>
         </div>
         {{end}}
@@ -766,6 +864,33 @@ const dashboardTemplate = `<!DOCTYPE html>
     </div>
 
     <script>
+        // Render price bars
+        document.querySelectorAll('.price-bar').forEach(function(bar) {
+            var price = parseFloat(bar.dataset.price);
+            var low = parseFloat(bar.dataset.low);
+            var high = parseFloat(bar.dataset.high);
+
+            // Calculate height (min 10%, max 100%)
+            var range = high - low;
+            var heightPct = range > 0 ? ((price - low) / range * 80) + 20 : 50;
+            bar.style.height = heightPct + '%';
+
+            // Calculate color based on position in range
+            var position = range > 0 ? (price - low) / range : 0.5;
+            var color;
+            if (position < 0.33) {
+                // Green (cheap)
+                color = '#4cd137';
+            } else if (position < 0.66) {
+                // Yellow (medium)
+                color = '#fbc531';
+            } else {
+                // Red (expensive)
+                color = '#e84118';
+            }
+            bar.style.backgroundColor = color;
+        });
+
         // Auto-refresh every 60 seconds
         setTimeout(function() {
             window.location.reload();
