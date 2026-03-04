@@ -483,7 +483,7 @@ const dashboardTemplate = `<!DOCTYPE html>
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center gap-2">
-                            <span>📊</span> <span>Energy Prices</span>
+                            <i data-lucide="bar-chart-2"></i> <span>Energy Prices</span>
                         </div>
                         <div class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" id="tax-toggle">
@@ -502,7 +502,7 @@ const dashboardTemplate = `<!DOCTYPE html>
             <div class="col-12">
                 <div class="card">
                     <div class="card-header d-flex align-items-center gap-2">
-                        <span>⚡</span> <span>Energy Flow</span>
+                        <i data-lucide="zap"></i> <span>Energy Flow</span>
                     </div>
                     <div class="card-body p-0">
                         <svg class="energy-flow-svg" viewBox="0 0 480 320">
@@ -555,12 +555,16 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <!-- Center hub -->
                             <circle class="energy-node-bg" cx="240" cy="160" r="22" />
                             <circle class="energy-node node-center" cx="240" cy="160" r="22" />
-                            <text class="energy-node-icon icon-center" x="240" y="160">●</text>
+                            <g transform="translate(228, 148)" class="svg-icon icon-center">
+                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                            </g>
 
                             <!-- House node (top) - Zappi house consumption minus battery power -->
                             <circle class="energy-node-bg" cx="240" cy="30" r="30" />
                             <circle class="energy-node node-house" cx="240" cy="30" r="30" />
-                            <text x="240" y="28" class="energy-node-icon icon-house">🏠</text>
+                            <g transform="translate(228, 18)" class="svg-icon icon-house">
+                                <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                            </g>
                             {{if .Zappis}}{{with index .Zappis 0}}
                                 <text x="300" y="25" class="energy-label" id="house-power">{{formatPower .HouseConsumption}}</text>
                                 <text x="300" y="40" class="energy-sublabel">House</text>
@@ -570,7 +574,9 @@ const dashboardTemplate = `<!DOCTYPE html>
                             {{if .Zappis}}{{with index .Zappis 0}}
                             <circle class="energy-node-bg" cx="40" cy="160" r="30" />
                             <circle class="energy-node node-zappi" cx="40" cy="160" r="30" />
-                            <text x="40" y="158" class="energy-node-icon icon-car">🚗</text>
+                            <g transform="translate(28, 148)" class="svg-icon icon-car">
+                                <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/>
+                            </g>
                             {{if $.Vehicles}}{{with index $.Vehicles 0}}{{if .Charging}}{{if .Charging.Status}}
                             <text x="40" y="100" class="energy-label">{{.Charging.Status.Battery.StateOfChargePercent}}%</text>
                             {{end}}{{end}}{{end}}{{end}}
@@ -581,7 +587,9 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <!-- Grid node (right) - from Zappi -->
                             <circle class="energy-node-bg" cx="440" cy="160" r="30" />
                             <circle class="energy-node node-grid" cx="440" cy="160" r="30" />
-                            <text x="440" y="158" class="energy-node-icon icon-grid">🔌</text>
+                            <g transform="translate(428, 148)" class="svg-icon icon-grid">
+                                <path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>
+                            </g>
                             {{if .Zappis}}{{with index .Zappis 0}}
                             <text x="440" y="115" class="energy-label">{{formatPower (abs .GridPower)}}</text>
                             <text x="440" y="130" class="energy-sublabel">{{if .IsImporting}}Import{{else if .IsExporting}}Export{{else}}--{{end}}</text>
@@ -590,7 +598,9 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <!-- Solar node (bottom center) - from Zappi -->
                             <circle class="energy-node-bg" cx="240" cy="290" r="30" />
                             <circle class="energy-node node-solar" cx="240" cy="290" r="30" />
-                            <text x="240" y="288" class="energy-node-icon icon-solar">☀️</text>
+                            <g transform="translate(228, 278)" class="svg-icon icon-solar">
+                                <circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
+                            </g>
                             {{if .Zappis}}{{with index .Zappis 0}}
                             <text x="300" y="285" class="energy-label">{{formatPower .SolarPower}}</text>
                             <text x="300" y="300" class="energy-sublabel">Solar</text>
@@ -600,7 +610,9 @@ const dashboardTemplate = `<!DOCTYPE html>
                             {{if .Battery}}
                             <circle class="energy-node-bg" cx="70" cy="270" r="30" />
                             <circle class="energy-node node-battery" cx="70" cy="270" r="30" />
-                            <text x="70" y="268" class="energy-node-icon icon-battery">🔋</text>
+                            <g transform="translate(58, 258)" class="svg-icon icon-battery">
+                                <rect width="16" height="10" x="2" y="7" rx="2" ry="2"/><line x1="22" x2="22" y1="11" y2="13"/>
+                            </g>
                             <text x="130" y="255" class="energy-label">{{printf "%.0f" .Battery.SOC}}%</text>
                             <text x="130" y="270" class="energy-sublabel">{{formatPower (abs .Battery.BatteryPower)}}</text>
                             <text x="130" y="285" class="energy-sublabel">{{if lt .Battery.BatteryPower 0.0}}Charging{{else if gt .Battery.BatteryPower 0.0}}Discharging{{else}}Idle{{end}}</text>
@@ -615,7 +627,7 @@ const dashboardTemplate = `<!DOCTYPE html>
             <div class="col-12 col-md-6 col-lg-4">
                 <div class="card h-100">
                     <div class="card-header d-flex align-items-center gap-2">
-                        <span>🔌</span> <span>Zappi {{.Serial}}</span>
+                        <i data-lucide="plug"></i> <span>Zappi {{.Serial}}</span>
                     </div>
                     <div class="card-body">
                         <ul class="list-group list-group-flush mb-3">
@@ -650,7 +662,7 @@ const dashboardTemplate = `<!DOCTYPE html>
             <div class="col-12 col-md-6 col-lg-4">
                 <div class="card h-100">
                     <div class="card-header d-flex align-items-center gap-2">
-                        <span>🚙</span> <span>{{.Vehicle.Name}}</span>
+                        <i data-lucide="car"></i> <span>{{.Vehicle.Name}}</span>
                     </div>
                     <div class="card-body">
                         {{if .Charging}}{{if .Charging.Status}}
@@ -706,7 +718,7 @@ const dashboardTemplate = `<!DOCTYPE html>
             <div class="col-12 col-md-6 col-lg-4">
                 <div class="card h-100">
                     <div class="card-header d-flex align-items-center gap-2">
-                        <span>🔋</span> <span>Home Battery</span>
+                        <i data-lucide="battery-charging"></i> <span>Home Battery</span>
                     </div>
                     <div class="card-body">
                         <div class="d-flex justify-content-between mb-2">
@@ -888,6 +900,9 @@ const dashboardTemplate = `<!DOCTYPE html>
             }
         })();
         {{end}}
+
+        // Initialize Lucide icons
+        lucide.createIcons();
 
         setTimeout(function() { window.location.reload(); }, 60000);
     </script>

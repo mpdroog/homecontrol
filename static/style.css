@@ -179,7 +179,13 @@ body {
     letter-spacing: 0.05em;
 }
 
-/* Icon styling */
+/* Lucide icon styling */
+[data-lucide] {
+    width: 20px;
+    height: 20px;
+    stroke-width: 2;
+}
+
 .icon-header {
     width: 20px;
     height: 20px;
@@ -306,34 +312,37 @@ body {
     stroke: var(--accent-cyan);
 }
 
-/* Energy Flow Icon Colors */
-.icon-center {
+/* Energy Flow SVG Icons */
+.svg-icon {
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.svg-icon.icon-center {
     fill: var(--accent-green);
+    stroke: var(--accent-green);
 }
 
-.icon-house {
-    fill: #da3cda;
-    font-size: 20px;
+.svg-icon.icon-house {
+    stroke: var(--accent-purple);
 }
 
-.icon-car {
-    fill: #3b82f6;
-    font-size: 20px;
+.svg-icon.icon-car {
+    stroke: var(--accent-blue);
 }
 
-.icon-grid {
-    fill: var(--accent-orange);
-    font-size: 20px;
+.svg-icon.icon-grid {
+    stroke: var(--accent-orange);
 }
 
-.icon-solar {
-    fill: var(--accent-green);
-    font-size: 20px;
+.svg-icon.icon-solar {
+    stroke: var(--accent-green);
 }
 
-.icon-battery {
-    fill: var(--accent-cyan);
-    font-size: 20px;
+.svg-icon.icon-battery {
+    stroke: var(--accent-cyan);
 }
 
 /* Progress bar thin */
