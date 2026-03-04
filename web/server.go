@@ -447,6 +447,7 @@ func (s *Server) Run() error {
 	http.HandleFunc("/api/zappi", s.handleZappiControl)
 	http.HandleFunc("/api/skoda", s.handleSkodaControl)
 	http.HandleFunc("/api/chart", s.handleChartData)
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	log.Printf("Starting server on %s", s.config.ListenAddr)
 	return http.ListenAndServe(s.config.ListenAddr, nil)
@@ -462,132 +463,8 @@ const dashboardTemplate = `<!DOCTYPE html>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        :root {
-            --bg-primary: #0f1419;
-            --bg-secondary: #1a1f2e;
-            --bg-card: #1e2433;
-            --bg-card-header: #252b3b;
-            --border-color: #2d3548;
-            --text-primary: #e6edf3;
-            --text-secondary: #8b949e;
-            --text-muted: #6e7681;
-            --accent-green: #3fb950;
-            --accent-red: #f85149;
-            --accent-blue: #58a6ff;
-            --accent-yellow: #d29922;
-            --accent-cyan: #22d3ee;
-            --accent-orange: #f97316;
-            --accent-purple: #a855f7;
-        }
-        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
-        body {
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            line-height: 1.6;
-        }
-        .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
-            transition: box-shadow 0.2s ease;
-        }
-        .card:hover {
-            box-shadow: 0 8px 12px -2px rgba(0, 0, 0, 0.3);
-        }
-        .card-header {
-            background: var(--bg-card-header);
-            border-bottom: 1px solid var(--border-color);
-            border-radius: 12px 12px 0 0 !important;
-            font-weight: 600;
-            padding: 1rem 1.25rem;
-        }
-        .card-body { padding: 1.25rem; }
-        .list-group-item {
-            background: transparent;
-            border-color: var(--border-color);
-            padding: 0.875rem 0;
-        }
-        .text-positive { color: var(--accent-green); }
-        .text-negative { color: var(--accent-red); }
-        .text-charging { color: var(--accent-blue); }
-        .text-warning-custom { color: var(--accent-yellow); }
-        .text-secondary { color: var(--text-secondary) !important; }
-        .echart { width: 100%; height: 300px; }
-        .soc-gradient {
-            background: linear-gradient(90deg, var(--accent-red), var(--accent-yellow), var(--accent-green));
-            border-radius: 6px;
-        }
-        .progress { background: var(--bg-secondary); border-radius: 6px; }
-        /* Buttons */
-        .btn {
-            border-radius: 8px;
-            font-weight: 500;
-            padding: 0.5rem 1rem;
-            transition: all 0.2s ease;
-        }
-        .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.875rem; }
-        .btn-outline-secondary {
-            border-color: var(--border-color);
-            color: var(--text-secondary);
-        }
-        .btn-outline-secondary:hover {
-            background: var(--bg-secondary);
-            border-color: var(--text-secondary);
-            color: var(--text-primary);
-        }
-        /* Navbar */
-        .navbar {
-            background: var(--bg-secondary) !important;
-            border-bottom: 1px solid var(--border-color) !important;
-            padding: 0.875rem 0;
-        }
-        .navbar-brand { font-weight: 700; font-size: 1.25rem; }
-        .badge {
-            font-weight: 600;
-            padding: 0.5rem 0.75rem;
-            border-radius: 6px;
-        }
-        .summary-value { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
-        .summary-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-        /* Icon styling */
-        .icon-header { width: 20px; height: 20px; stroke-width: 2; }
-        .icon-sm { width: 16px; height: 16px; }
-        /* Energy Flow Diagram */
-        .energy-flow-svg { width: 100%; height: 320px; }
-        .energy-node { fill: none; stroke-width: 3; }
-        .energy-node-bg { fill: var(--bg-card); }
-        .energy-node-icon { fill: var(--text-secondary); font-size: 24px; dominant-baseline: central; text-anchor: middle; }
-        .energy-label { fill: var(--text-primary); font-size: 13px; font-weight: 600; text-anchor: middle; }
-        .energy-sublabel { fill: var(--text-secondary); font-size: 11px; text-anchor: middle; }
-        .flow-line { fill: none; stroke: var(--border-color); stroke-width: 3; }
-        .flow-line-active { stroke-width: 3; stroke-linecap: round; }
-        .flow-dots { fill: none; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 0 12; }
-        @keyframes flowForward { 0% { stroke-dashoffset: 24; } 100% { stroke-dashoffset: 0; } }
-        @keyframes flowBackward { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 24; } }
-        .flow-animate-forward { animation: flowForward 0.8s linear infinite; }
-        .flow-animate-backward { animation: flowBackward 0.8s linear infinite; }
-        .node-house { stroke: var(--accent-purple); }
-        .node-zappi { stroke: var(--accent-blue); }
-        .node-grid { stroke: var(--accent-orange); }
-        .node-solar { stroke: var(--accent-green); }
-        .node-battery { stroke: var(--accent-cyan); }
-        .node-center { stroke: var(--accent-green); }
-        .flow-grid { stroke: var(--accent-orange); }
-        .flow-solar { stroke: var(--accent-green); }
-        .flow-zappi { stroke: var(--accent-blue); }
-        .flow-house { stroke: var(--accent-purple); }
-        .flow-battery { stroke: var(--accent-cyan); }
-        /* Responsive */
-        @media (max-width: 576px) {
-            .energy-flow-svg { height: 280px; }
-            .energy-label { font-size: 11px; }
-            .energy-sublabel { font-size: 9px; }
-            .summary-value { font-size: 1.25rem; }
-        }
-    </style>
 </head>
 <body>
     <nav class="navbar navbar-dark bg-dark border-bottom border-secondary mb-3">
@@ -604,6 +481,25 @@ const dashboardTemplate = `<!DOCTYPE html>
 
     <div class="container-fluid">
         <div class="row g-4">
+            {{if .Prices}}
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-2">
+                            <span>📊</span> <span>Energy Prices</span>
+                        </div>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="tax-toggle">
+                            <label class="form-check-label text-secondary" for="tax-toggle">Include 21% BTW</label>
+                        </div>
+                    </div>
+                    <div class="">
+                        <div id="price-chart" class="echart"></div>
+                    </div>
+                </div>
+            </div>
+            {{end}}
+
             <!-- Energy Flow Diagram -->
             {{if or .Battery .Zappis}}
             <div class="col-12">
@@ -662,12 +558,12 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <!-- Center hub -->
                             <circle class="energy-node-bg" cx="240" cy="160" r="22" />
                             <circle class="energy-node node-center" cx="240" cy="160" r="22" />
-                            <text class="energy-node-icon" x="240" y="160" style="fill:#3fb950;">●</text>
+                            <text class="energy-node-icon icon-center" x="240" y="160">●</text>
 
                             <!-- House node (top) - Zappi house consumption minus battery power -->
                             <circle class="energy-node-bg" cx="240" cy="30" r="30" />
                             <circle class="energy-node node-house" cx="240" cy="30" r="30" />
-                            <text x="240" y="28" class="energy-node-icon" style="fill:#da3cda; font-size:20px;">🏠</text>
+                            <text x="240" y="28" class="energy-node-icon icon-house">🏠</text>
                             {{if .Zappis}}{{with index .Zappis 0}}
                                 <text x="300" y="25" class="energy-label" id="house-power">{{formatPower .HouseConsumption}}</text>
                                 <text x="300" y="40" class="energy-sublabel">House</text>
@@ -677,7 +573,7 @@ const dashboardTemplate = `<!DOCTYPE html>
                             {{if .Zappis}}{{with index .Zappis 0}}
                             <circle class="energy-node-bg" cx="40" cy="160" r="30" />
                             <circle class="energy-node node-zappi" cx="40" cy="160" r="30" />
-                            <text x="40" y="158" class="energy-node-icon" style="fill:#3b82f6; font-size:20px;">🚗</text>
+                            <text x="40" y="158" class="energy-node-icon icon-car">🚗</text>
                             {{if $.Vehicles}}{{with index $.Vehicles 0}}{{if .Charging}}{{if .Charging.Status}}
                             <text x="40" y="100" class="energy-label">{{.Charging.Status.Battery.StateOfChargePercent}}%</text>
                             {{end}}{{end}}{{end}}{{end}}
@@ -688,7 +584,7 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <!-- Grid node (right) - from Zappi -->
                             <circle class="energy-node-bg" cx="440" cy="160" r="30" />
                             <circle class="energy-node node-grid" cx="440" cy="160" r="30" />
-                            <text x="440" y="158" class="energy-node-icon" style="fill:#f97316; font-size:20px;">🔌</text>
+                            <text x="440" y="158" class="energy-node-icon icon-grid">🔌</text>
                             {{if .Zappis}}{{with index .Zappis 0}}
                             <text x="440" y="115" class="energy-label">{{formatPower (abs .GridPower)}}</text>
                             <text x="440" y="130" class="energy-sublabel">{{if .IsImporting}}Import{{else if .IsExporting}}Export{{else}}--{{end}}</text>
@@ -697,7 +593,7 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <!-- Solar node (bottom center) - from Zappi -->
                             <circle class="energy-node-bg" cx="240" cy="290" r="30" />
                             <circle class="energy-node node-solar" cx="240" cy="290" r="30" />
-                            <text x="240" y="288" class="energy-node-icon" style="fill:#3fb950; font-size:20px;">☀️</text>
+                            <text x="240" y="288" class="energy-node-icon icon-solar">☀️</text>
                             {{if .Zappis}}{{with index .Zappis 0}}
                             <text x="300" y="285" class="energy-label">{{formatPower .SolarPower}}</text>
                             <text x="300" y="300" class="energy-sublabel">Solar</text>
@@ -707,7 +603,7 @@ const dashboardTemplate = `<!DOCTYPE html>
                             {{if .Battery}}
                             <circle class="energy-node-bg" cx="70" cy="270" r="30" />
                             <circle class="energy-node node-battery" cx="70" cy="270" r="30" />
-                            <text x="70" y="268" class="energy-node-icon" style="fill:#22d3ee; font-size:20px;">🔋</text>
+                            <text x="70" y="268" class="energy-node-icon icon-battery">🔋</text>
                             <text x="130" y="255" class="energy-label">{{printf "%.0f" .Battery.SOC}}%</text>
                             <text x="130" y="270" class="energy-sublabel">{{formatPower (abs .Battery.BatteryPower)}}</text>
                             <text x="130" y="285" class="energy-sublabel">{{if lt .Battery.BatteryPower 0.0}}Charging{{else if gt .Battery.BatteryPower 0.0}}Discharging{{else}}Idle{{end}}</text>
@@ -765,7 +661,7 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <span class="text-secondary">Battery</span>
                             <strong>{{.Charging.Status.Battery.StateOfChargePercent}}%</strong>
                         </div>
-                        <div class="progress mb-3" style="height: 8px;">
+                        <div class="progress progress-thin mb-3">
                             <div class="progress-bar soc-gradient" style="width: {{.Charging.Status.Battery.StateOfChargePercent}}%"></div>
                         </div>
                         <ul class="list-group list-group-flush mb-3">
@@ -820,32 +716,13 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <span class="text-secondary">State of Charge</span>
                             <strong>{{printf "%.1f" .Battery.SOC}}%</strong>
                         </div>
-                        <div class="progress mb-3" style="height: 8px;">
+                        <div class="progress progress-thin mb-3">
                             <div class="progress-bar soc-gradient" style="width: {{printf "%.0f" .Battery.SOC}}%"></div>
                         </div>
                         <div class="d-flex justify-content-between">
                             <span class="text-secondary">Battery Power</span>
                             <strong class="{{if gt .Battery.BatteryPower 0.0}}text-charging{{else if lt .Battery.BatteryPower 0.0}}text-negative{{end}}">{{formatPower (abs .Battery.BatteryPower)}} ({{batteryDirection .Battery.BatteryPower}})</strong>
                         </div>
-                    </div>
-                </div>
-            </div>
-            {{end}}
-
-            {{if .Prices}}
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center gap-2">
-                            <span>📊</span> <span>Energy Prices</span>
-                        </div>
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" id="tax-toggle">
-                            <label class="form-check-label text-secondary" for="tax-toggle">Include 21% BTW</label>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div id="price-chart" class="echart"></div>
                     </div>
                 </div>
             </div>
@@ -937,10 +814,10 @@ const dashboardTemplate = `<!DOCTYPE html>
                         formatter: function(params) {
                             var d = params.data;
                             var taxLabel = includeTax ? 'incl. 21% BTW' : 'excl. BTW';
-                            return '<div style="font-weight:600; margin-bottom:6px;">' + d.day + ' ' + d.hour + '</div>' +
-                                   '<span style="font-size:1.4em; font-weight:700; color:' + d.itemStyle.color + '">€' + d.value.toFixed(4) + '</span>' +
-                                   '<span style="color:#8b949e"> /kWh</span>' +
-                                   '<div style="color:#8b949e; font-size:11px; margin-top:6px;">' + taxLabel + '</div>';
+                            return '<div class="tooltip-header">' + d.day + ' ' + d.hour + '</div>' +
+                                   '<span class="tooltip-price" style="color:' + d.itemStyle.color + '">€' + d.value.toFixed(4) + '</span>' +
+                                   '<span class="tooltip-unit"> /kWh</span>' +
+                                   '<div class="tooltip-tax">' + taxLabel + '</div>';
                         }
                     },
                     grid: { left: 55, right: 20, top: 20, bottom: 55 },
