@@ -45,7 +45,7 @@ type ESSListResponse struct {
 // PowerData contains real-time power information.
 type PowerData struct {
 	SOC          float64 `json:"soc"`          // State of charge (%)
-	BatteryPower float64 `json:"pbat"`         // Battery power (W), +charging / -discharging
+	BatteryPower float64 `json:"pbat"`         // Battery power (W), +discharging / -charging
 	GridPower    float64 `json:"pgrid"`        // Grid power (W)
 	PVPower      float64 `json:"ppv"`          // PV/Solar power (W)
 	LoadPower    float64 `json:"pload"`        // Load/consumption power (W)

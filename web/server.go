@@ -254,6 +254,16 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		"subtract": func(a, b float64) float64 {
 			return a - b
 		},
+		"voltageClass": func(v float64) string {
+			// EU nominal: 230V ±10% (207-253V)
+			if v < 207 || v > 253 {
+				return "bg-danger" // Red: outside tolerance
+			}
+			if v < 216 || v > 245 {
+				return "bg-warning text-dark" // Yellow: approaching limits
+			}
+			return "bg-success" // Green: good range
+		},
 	}).Parse(dashboardTemplate))
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -584,6 +594,7 @@ const dashboardTemplate = `<!DOCTYPE html>
         <div class="container-fluid">
             <span class="navbar-brand mb-0 h1">Home Control</span>
             <div class="d-flex align-items-center gap-3">
+                {{if .Zappis}}{{with index .Zappis 0}}<span class="badge {{voltageClass .VoltageV}}">{{printf "%.1f" .VoltageV}}V</span>{{end}}{{end}}
                 {{if .CurrentPrice}}<span class="badge bg-secondary">{{formatPrice .CurrentPrice.PriceEUR}} /kWh</span>{{end}}
                 <small class="text-secondary d-none d-md-inline">Updated: {{formatDateTime .LastUpdate}}</small>
                 <a href="/api/refresh" class="btn btn-outline-secondary btn-sm">Refresh</a>
@@ -640,9 +651,11 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <!-- Animated flow dots: Battery -->
                             {{if .Battery}}
                                 {{if gt .Battery.BatteryPower 0.0}}
-                                <path class="flow-dots flow-battery flow-animate-backward" d="M90,260 L240,160" />
-                                {{else if lt .Battery.BatteryPower 0.0}}
+                                <!-- Discharging: power flows from battery to center -->
                                 <path class="flow-dots flow-battery flow-animate-forward" d="M90,260 L240,160" />
+                                {{else if lt .Battery.BatteryPower 0.0}}
+                                <!-- Charging: power flows from center to battery -->
+                                <path class="flow-dots flow-battery flow-animate-backward" d="M90,260 L240,160" />
                                 {{end}}
                             {{end}}
 
@@ -697,7 +710,7 @@ const dashboardTemplate = `<!DOCTYPE html>
                             <text x="70" y="268" class="energy-node-icon" style="fill:#22d3ee; font-size:20px;">🔋</text>
                             <text x="130" y="255" class="energy-label">{{printf "%.0f" .Battery.SOC}}%</text>
                             <text x="130" y="270" class="energy-sublabel">{{formatPower (abs .Battery.BatteryPower)}}</text>
-                            <text x="130" y="285" class="energy-sublabel">{{if gt .Battery.BatteryPower 0.0}}Charging{{else if lt .Battery.BatteryPower 0.0}}Discharging{{else}}Idle{{end}}</text>
+                            <text x="130" y="285" class="energy-sublabel">{{if lt .Battery.BatteryPower 0.0}}Charging{{else if gt .Battery.BatteryPower 0.0}}Discharging{{else}}Idle{{end}}</text>
                             {{end}}
                         </svg>
                     </div>

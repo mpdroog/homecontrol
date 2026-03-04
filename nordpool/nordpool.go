@@ -52,16 +52,19 @@ func (c *Client) SetDebug(debug bool) {
 func (c *Client) GetPrices() (*Prices, error) {
 	prices := &Prices{}
 
+	// Use Amsterdam timezone for date calculations since NordPool prices are for NL
+	loc, _ := time.LoadLocation("Europe/Amsterdam")
+	now := time.Now().In(loc)
+
 	// Fetch today's prices
-	today := time.Now()
-	todayPrices, err := c.fetchPrices(today)
+	todayPrices, err := c.fetchPrices(now)
 	if err != nil {
 		return nil, fmt.Errorf("fetching today's prices: %w", err)
 	}
 	prices.Today = todayPrices
 
 	// Fetch tomorrow's prices (may not be available yet)
-	tomorrow := today.AddDate(0, 0, 1)
+	tomorrow := now.AddDate(0, 0, 1)
 	tomorrowPrices, err := c.fetchPrices(tomorrow)
 	if err == nil {
 		prices.Tomorrow = tomorrowPrices
