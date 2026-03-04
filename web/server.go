@@ -727,16 +727,8 @@ const dashboardTemplate = `<!DOCTYPE html>
                     <div class="card-body">
                         <ul class="list-group list-group-flush mb-3">
                             <li class="list-group-item d-flex justify-content-between px-0">
-                                <span class="text-secondary">Mode</span>
-                                <strong>{{.Mode}}</strong>
-                            </li>
-                            <li class="list-group-item d-flex justify-content-between px-0">
-                                <span class="text-secondary">Status</span>
-                                <strong>{{.Status}}</strong>
-                            </li>
-                            <li class="list-group-item d-flex justify-content-between px-0">
-                                <span class="text-secondary">Plug</span>
-                                <strong>{{.PlugStatus}}</strong>
+                                <span class="text-secondary">Mode/Status/PlugStatus</span>
+                                <strong>{{.Mode}} {{.Status}} {{.PlugStatus}}</strong>
                             </li>
                         </ul>
                         <ul class="list-group list-group-flush mb-3">
