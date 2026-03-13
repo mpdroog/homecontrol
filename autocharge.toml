@@ -1,0 +1,78 @@
+# Autocharge Module Requirements
+# This file documents the requirements for the EV charging scheduler
+
+[package]
+name = "autocharge"
+description = "Automated EV charging based on electricity prices"
+
+[config]
+# These settings will be added to config.toml under [autocharge] section
+zappi_serial = "20933805"           # Zappi device serial number
+skoda_vin = "TMBZZZAAZLD800584"     # Skoda vehicle VIN
+energy_markup = 0.15                 # EUR/kWh markup for taxes/fees in cost calculation
+
+[price_analysis]
+consecutive_hours = 4                # Find 4 consecutive cheapest hours
+time_window = "24h"                  # Analyze full 24-hour window
+allow_midnight_span = true           # Allow window to span midnight (e.g., 23:00-03:00)
+fallback_start = "02:00"             # Fallback start time if prices unavailable
+fallback_end = "06:00"               # Fallback end time if prices unavailable
+
+[polling]
+interval_minutes = 10                # Poll Zappi every 10 minutes
+detect_reattachment = true           # Re-calculate hours when car is re-attached
+
+[charging]
+skip_soc_threshold = 95              # Skip charging if SOC >= 95%
+zappi_mode = "fast"                  # Charging mode to use
+skoda_wakeup_delay_minutes = 5       # Wait 5 min before calling Skoda start API
+error_notification_delay_minutes = 10 # Send error if not charging after 10 min
+resume_on_interruption = true        # Try to resume if charging is interrupted
+
+[notifications]
+# 19:00 - Always send cheapest hours announcement
+# Format: "The 4 cheapest energy hours to feed the car are from HH:00 to HH:00"
+# Or if prices unavailable: "Prices unavailable, automatic charging will run from 02:00 to 06:00"
+announce_time = "19:00"
+
+# 20:00 - Warning if car not connected to Zappi
+car_not_connected_time = "20:00"
+
+# On re-attachment - Notify new scheduled hours
+# Format: "Car connected, charging planned for HH:00-HH:00"
+notify_on_reattachment = true
+
+# On charging failure after 10 minutes
+# Format: "Car won't charge, manual intervention needed"
+notify_on_failure = true
+
+# On charging interruption
+# Format: "Charging interrupted, attempting to resume"
+notify_on_interruption = true
+
+# On successful start - NO notification (silent)
+notify_on_success = false
+
+# 06:00 - Battery status summary (Tuesday, Wednesday, Thursday, Friday only)
+# Format: "Battery: XX%, Range: XXkm, Charged: X.X kWh, Cost: €X.XX"
+summary_time = "06:00"
+summary_days = ["Tuesday", "Wednesday", "Thursday", "Friday"]
+summary_includes = ["soc", "range", "kwh_charged", "cost_estimate"]
+
+[api_endpoints]
+# GET/POST /api/autocharge/enable - Enable the scheduler
+# GET/POST /api/autocharge/disable - Disable scheduler (current session continues)
+# GET /api/autocharge/status - Get current scheduler state
+enable_endpoint = "/api/autocharge/enable"
+disable_endpoint = "/api/autocharge/disable"
+status_endpoint = "/api/autocharge/status"
+
+[state]
+persistence = "memory"               # In-memory only, no disk persistence
+# States: Idle, WaitingForCar, Scheduled, Charging, Monitoring
+
+[schedule]
+active_days = "every_day"            # Run every day
+
+[disable_behavior]
+stop_current_session = false         # Let current charging session finish when disabled
