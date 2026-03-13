@@ -13,6 +13,7 @@ import (
 	"github.com/mpdroog/homecontrol/myenergi"
 	"github.com/mpdroog/homecontrol/myskoda"
 	"github.com/mpdroog/homecontrol/nordpool"
+	"github.com/mpdroog/homecontrol/pushover"
 	"github.com/mpdroog/homecontrol/web"
 )
 
@@ -22,6 +23,7 @@ type Config struct {
 	MyEnergi  MyEnergiConfig  `toml:"myenergi"`
 	Weather   WeatherConfig   `toml:"weather"`
 	Server    ServerConfig    `toml:"server"`
+	Pushover  PushoverConfig  `toml:"pushover"`
 }
 
 type ServerConfig struct {
@@ -50,6 +52,11 @@ type WeatherConfig struct {
 	Longitude float64 `toml:"longitude"`
 }
 
+type PushoverConfig struct {
+	Token string `toml:"token"`
+	User  string `toml:"user"`
+}
+
 func usage() {
 	fmt.Fprintf(os.Stderr, `Usage: homecontrol [options] [command]
 
@@ -66,6 +73,7 @@ Commands:
   zappi-eco           Set Zappi to Eco mode
   zappi-eco+          Set Zappi to Eco+ mode
   zappi-boost KWH     Boost charge for KWH kilowatt-hours
+  push MESSAGE        Send push notification to configured devices
   server              Start HTTP dashboard server
   collect             Start data collector (runs every minute)
   collect-once        Collect data once and exit (for cron)
@@ -178,6 +186,31 @@ func main() {
 			aClient.SetSN(cfg.AlphaESS.SN)
 		}
 		showBatteryStatus(aClient)
+		return
+	}
+
+	// Handle push command (Pushover)
+	if cmd == "push" {
+		if cfg.Pushover.Token == "" || cfg.Pushover.User == "" {
+			fmt.Fprintln(os.Stderr, "Error: pushover.token and pushover.user must be set in config.toml")
+			os.Exit(1)
+		}
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Error: push requires a message argument (e.g., push \"Hello Kim\")")
+			os.Exit(1)
+		}
+		message := args[1]
+		if *debug {
+			fmt.Printf("[DEBUG] Pushover config: token=%s..., user=%s...\n", cfg.Pushover.Token[:8], cfg.Pushover.User[:8])
+		}
+		poClient := pushover.NewClient(cfg.Pushover.Token, cfg.Pushover.User)
+		poClient.SetDebug(*debug)
+
+		fmt.Printf("Sending push notification...\n")
+		if err := poClient.Send(message); err != nil {
+			log.Fatalf("Failed to send push notification: %v", err)
+		}
+		fmt.Println("Notification sent!")
 		return
 	}
 
