@@ -15,9 +15,11 @@ import (
 	"time"
 
 	"github.com/mpdroog/homecontrol/alphaess"
+	"github.com/mpdroog/homecontrol/autocharge"
 	"github.com/mpdroog/homecontrol/myenergi"
 	"github.com/mpdroog/homecontrol/myskoda"
 	"github.com/mpdroog/homecontrol/nordpool"
+	"github.com/mpdroog/homecontrol/pushover"
 	"github.com/mpdroog/homecontrol/weather"
 )
 
@@ -38,6 +40,13 @@ type Config struct {
 	// Weather location
 	WeatherLat float64
 	WeatherLon float64
+
+	// AutoCharge scheduler config
+	AutoChargeZappiSerial  string
+	AutoChargeSkodaVIN     string
+	AutoChargeEnergyMarkup float64
+	PushoverToken          string
+	PushoverUser           string
 }
 
 // DashboardData holds all data for the dashboard template.
@@ -98,6 +107,7 @@ type Server struct {
 	meClient      *myenergi.Client
 	skodaClient   *myskoda.Client
 	weatherClient *weather.Client
+	scheduler     *autocharge.Scheduler
 
 	mu         sync.RWMutex
 	data       DashboardData
@@ -123,6 +133,39 @@ func NewServer(cfg Config) *Server {
 
 	if cfg.WeatherLat != 0 && cfg.WeatherLon != 0 {
 		s.weatherClient = weather.NewClient(cfg.WeatherLat, cfg.WeatherLon)
+	}
+
+	// Initialize AutoCharge scheduler if configured
+	if s.meClient != nil && cfg.AutoChargeZappiSerial != "" {
+		// Create a function to get (or re-login) the Skoda client
+		var getSkodaClient autocharge.SkodaClientFunc
+		if cfg.MySkodaUsername != "" && cfg.MySkodaPassword != "" {
+			getSkodaClient = func() (*myskoda.Client, error) {
+				if s.skodaClient != nil {
+					return s.skodaClient, nil
+				}
+				if err := s.initSkodaClient(); err != nil {
+					return nil, err
+				}
+				return s.skodaClient, nil
+			}
+		}
+
+		// Create pushover client if configured
+		var pushClient *pushover.Client
+		if cfg.PushoverToken != "" && cfg.PushoverUser != "" {
+			pushClient = pushover.NewClient(cfg.PushoverToken, cfg.PushoverUser)
+		}
+
+		s.scheduler = autocharge.NewScheduler(
+			s.meClient,
+			s.npClient,
+			pushClient,
+			getSkodaClient,
+			cfg.AutoChargeZappiSerial,
+			cfg.AutoChargeSkodaVIN,
+			cfg.AutoChargeEnergyMarkup,
+		)
 	}
 
 	return s
@@ -473,6 +516,38 @@ func (s *Server) handleChartData(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(points)
 }
 
+// handleAutoChargeControl handles autocharge scheduler control.
+func (s *Server) handleAutoChargeControl(w http.ResponseWriter, r *http.Request) {
+	if s.scheduler == nil {
+		http.Error(w, "AutoCharge scheduler not configured", http.StatusBadRequest)
+		return
+	}
+
+	action := r.URL.Query().Get("action")
+
+	switch action {
+	case "enable":
+		s.scheduler.Enable()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "Scheduler enabled",
+		})
+	case "disable":
+		s.scheduler.Disable()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "Scheduler disabled (current session continues)",
+		})
+	case "status":
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(s.scheduler.GetStatus())
+	default:
+		http.Error(w, "Unknown action. Use: enable, disable, or status", http.StatusBadRequest)
+	}
+}
+
 // Run starts the HTTP server.
 func (s *Server) Run() error {
 	// Initialize Skoda client (requires login)
@@ -492,6 +567,16 @@ func (s *Server) Run() error {
 		}
 	}()
 
+	// Start AutoCharge scheduler if configured
+	if s.scheduler != nil {
+		log.Println("Starting AutoCharge scheduler...")
+		go func() {
+			if err := s.scheduler.Run(); err != nil {
+				log.Printf("AutoCharge scheduler error: %v", err)
+			}
+		}()
+	}
+
 	// Setup routes
 	http.HandleFunc("/", s.handleDashboard)
 	http.HandleFunc("/api/data", s.handleAPI)
@@ -499,6 +584,7 @@ func (s *Server) Run() error {
 	http.HandleFunc("/api/zappi", s.handleZappiControl)
 	http.HandleFunc("/api/skoda", s.handleSkodaControl)
 	http.HandleFunc("/api/chart", s.handleChartData)
+	http.HandleFunc("/api/autocharge", s.handleAutoChargeControl)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	log.Printf("Starting server on %s", s.config.ListenAddr)

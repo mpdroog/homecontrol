@@ -18,12 +18,19 @@ import (
 )
 
 type Config struct {
-	MySkoda   MySkodaConfig   `toml:"myskoda"`
-	AlphaESS  AlphaESSConfig  `toml:"alphaess"`
-	MyEnergi  MyEnergiConfig  `toml:"myenergi"`
-	Weather   WeatherConfig   `toml:"weather"`
-	Server    ServerConfig    `toml:"server"`
-	Pushover  PushoverConfig  `toml:"pushover"`
+	MySkoda    MySkodaConfig    `toml:"myskoda"`
+	AlphaESS   AlphaESSConfig   `toml:"alphaess"`
+	MyEnergi   MyEnergiConfig   `toml:"myenergi"`
+	Weather    WeatherConfig    `toml:"weather"`
+	Server     ServerConfig     `toml:"server"`
+	Pushover   PushoverConfig   `toml:"pushover"`
+	AutoCharge AutoChargeConfig `toml:"autocharge"`
+}
+
+type AutoChargeConfig struct {
+	ZappiSerial  string  `toml:"zappi_serial"`
+	SkodaVIN     string  `toml:"skoda_vin"`
+	EnergyMarkup float64 `toml:"energy_markup"`
 }
 
 type ServerConfig struct {
@@ -123,17 +130,22 @@ func main() {
 		}
 
 		srv := web.NewServer(web.Config{
-			ListenAddr:      listenAddr,
-			DataDir:         dataDir,
-			MySkodaUsername: cfg.MySkoda.Username,
-			MySkodaPassword: cfg.MySkoda.Password,
-			AlphaESSAppID:   cfg.AlphaESS.AppID,
-			AlphaESSSecret:  cfg.AlphaESS.AppSecret,
-			AlphaESSSN:      cfg.AlphaESS.SN,
-			MyEnergiSerial:  cfg.MyEnergi.HubSerial,
-			MyEnergiPass:    cfg.MyEnergi.Password,
-			WeatherLat:      cfg.Weather.Latitude,
-			WeatherLon:      cfg.Weather.Longitude,
+			ListenAddr:             listenAddr,
+			DataDir:                dataDir,
+			MySkodaUsername:        cfg.MySkoda.Username,
+			MySkodaPassword:        cfg.MySkoda.Password,
+			AlphaESSAppID:          cfg.AlphaESS.AppID,
+			AlphaESSSecret:         cfg.AlphaESS.AppSecret,
+			AlphaESSSN:             cfg.AlphaESS.SN,
+			MyEnergiSerial:         cfg.MyEnergi.HubSerial,
+			MyEnergiPass:           cfg.MyEnergi.Password,
+			WeatherLat:             cfg.Weather.Latitude,
+			WeatherLon:             cfg.Weather.Longitude,
+			AutoChargeZappiSerial:  cfg.AutoCharge.ZappiSerial,
+			AutoChargeSkodaVIN:     cfg.AutoCharge.SkodaVIN,
+			AutoChargeEnergyMarkup: cfg.AutoCharge.EnergyMarkup,
+			PushoverToken:          cfg.Pushover.Token,
+			PushoverUser:           cfg.Pushover.User,
 		})
 		if err := srv.Run(); err != nil {
 			log.Fatalf("Server error: %v", err)
