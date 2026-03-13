@@ -97,10 +97,11 @@ func main() {
 
 	// Parse command
 	args := flag.Args()
-	cmd := "status"
-	if len(args) > 0 {
-		cmd = args[0]
+	if len(args) == 0 {
+		usage()
+		return
 	}
+	cmd := args[0]
 
 	// Handle prices command separately (doesn't need MySkoda)
 	if cmd == "prices" {
