@@ -182,9 +182,18 @@ func (s *Server) refreshData() {
 		}
 	}
 
-	// Fetch MySkoda data
+	// Fetch MySkoda data (with auto re-login on failure)
+	if s.skodaClient == nil && s.config.MySkodaUsername != "" && s.config.MySkodaPassword != "" {
+		if err := s.initSkodaClient(); err != nil {
+			log.Printf("MySkoda re-init failed: %v", err)
+		}
+	}
 	if s.skodaClient != nil {
-		if vehicles, err := s.skodaClient.GetVehicles(); err == nil {
+		vehicles, err := s.skodaClient.GetVehicles()
+		if err != nil {
+			log.Printf("MySkoda GetVehicles failed: %v (will re-login next refresh)", err)
+			s.skodaClient = nil
+		} else {
 			for _, v := range vehicles {
 				vd := VehicleData{Vehicle: v}
 				if charging, err := s.skodaClient.GetCharging(v.VIN); err == nil {
