@@ -10,3 +10,7 @@ sn = "ALD007"
 [myenergi]
 hubserial = "12345678"
 password = "your-app-password"
+
+[weather]
+latitude = 52.3676
+longitude = 4.9041

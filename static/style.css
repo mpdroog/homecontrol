@@ -155,6 +155,11 @@ body {
     padding: 0.875rem 0;
 }
 
+.navbar > .container-fluid {
+    padding-left: 32px;
+    padding-right: 32px;
+}
+
 .navbar-brand {
     font-weight: 700;
     font-size: 1.25rem;
