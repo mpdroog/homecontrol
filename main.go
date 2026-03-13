@@ -20,6 +20,7 @@ type Config struct {
 	MySkoda   MySkodaConfig   `toml:"myskoda"`
 	AlphaESS  AlphaESSConfig  `toml:"alphaess"`
 	MyEnergi  MyEnergiConfig  `toml:"myenergi"`
+	Weather   WeatherConfig   `toml:"weather"`
 	Server    ServerConfig    `toml:"server"`
 }
 
@@ -42,6 +43,11 @@ type AlphaESSConfig struct {
 type MyEnergiConfig struct {
 	HubSerial string `toml:"hubserial"`
 	Password  string `toml:"password"`
+}
+
+type WeatherConfig struct {
+	Latitude  float64 `toml:"latitude"`
+	Longitude float64 `toml:"longitude"`
 }
 
 func usage() {
@@ -117,6 +123,8 @@ func main() {
 			AlphaESSSN:      cfg.AlphaESS.SN,
 			MyEnergiSerial:  cfg.MyEnergi.HubSerial,
 			MyEnergiPass:    cfg.MyEnergi.Password,
+			WeatherLat:      cfg.Weather.Latitude,
+			WeatherLon:      cfg.Weather.Longitude,
 		})
 		if err := srv.Run(); err != nil {
 			log.Fatalf("Server error: %v", err)
