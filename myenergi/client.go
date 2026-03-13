@@ -155,7 +155,7 @@ func (z *Zappi) HouseConsumption() float64 {
 	// GeneratedPower: solar production (always positive)
 	// CT1Power (charger): power going to the EV
 	// return z.GridPower + z.GeneratedPower - z.CT1Power
-	return z.CT4Power
+	return z.CT6Power
 }
 
 // VoltageV returns the voltage in Volts (API returns V/10).
