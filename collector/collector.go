@@ -151,12 +151,20 @@ func (c *Collector) collect() DataPoint {
 		if current := c.npClient.GetCurrentPrice(prices); current != nil {
 			dp.EnergyPrice = current.PricePerKWh()
 		}
+	} else {
+		log.Printf("NordPool error: %v", err)
 	}
 
 	// MySkoda
 	if c.skodaClient != nil {
-		if vehicles, err := c.skodaClient.GetVehicles(); err == nil && len(vehicles) > 0 {
-			if charging, err := c.skodaClient.GetCharging(vehicles[0].VIN); err == nil && charging.Status != nil {
+		vehicles, err := c.skodaClient.GetVehicles()
+		if err != nil {
+			log.Printf("MySkoda GetVehicles error: %v", err)
+		} else if len(vehicles) > 0 {
+			charging, err := c.skodaClient.GetCharging(vehicles[0].VIN)
+			if err != nil {
+				log.Printf("MySkoda GetCharging error: %v", err)
+			} else if charging.Status != nil {
 				dp.CarSOC = float64(charging.Status.Battery.StateOfChargePercent)
 				dp.CarRange = float64(charging.Status.Battery.RemainingRangeMeters) / 1000.0
 				dp.CarCharging = charging.Status.State == "CHARGING"

@@ -160,18 +160,26 @@ func (s *Server) refreshData() {
 		data.NextPrice = s.npClient.GetNextPrice(prices)
 		data.LowestPrice = s.npClient.GetLowestPrice(prices)
 		data.HighestPrice = s.npClient.GetHighestPrice(prices)
+	} else {
+		log.Printf("NordPool error: %v", err)
 	}
 
 	// Fetch AlphaESS data
 	if s.aessClient != nil {
 		if power, err := s.aessClient.GetLastPowerData(); err == nil {
 			data.Battery = power
+		} else {
+			log.Printf("AlphaESS power error: %v", err)
 		}
 		if charge, err := s.aessClient.GetChargeConfig(); err == nil {
 			data.ChargeConfig = charge
+		} else {
+			log.Printf("AlphaESS charge config error: %v", err)
 		}
 		if discharge, err := s.aessClient.GetDischargeConfig(); err == nil {
 			data.DischargeConf = discharge
+		} else {
+			log.Printf("AlphaESS discharge config error: %v", err)
 		}
 	}
 
@@ -179,6 +187,8 @@ func (s *Server) refreshData() {
 	if s.meClient != nil {
 		if zappis, err := s.meClient.GetZappiStatus(); err == nil {
 			data.Zappis = zappis
+		} else {
+			log.Printf("MyEnergi error: %v", err)
 		}
 	}
 
@@ -198,18 +208,28 @@ func (s *Server) refreshData() {
 				vd := VehicleData{Vehicle: v}
 				if charging, err := s.skodaClient.GetCharging(v.VIN); err == nil {
 					vd.Charging = charging
+				} else {
+					log.Printf("MySkoda GetCharging error for %s: %v", v.VIN, err)
 				}
 				if status, err := s.skodaClient.GetStatus(v.VIN); err == nil {
 					vd.Status = status
+				} else {
+					log.Printf("MySkoda GetStatus error for %s: %v", v.VIN, err)
 				}
 				if ac, err := s.skodaClient.GetAirConditioning(v.VIN); err == nil {
 					vd.AC = ac
+				} else {
+					log.Printf("MySkoda GetAirConditioning error for %s: %v", v.VIN, err)
 				}
 				if pos, err := s.skodaClient.GetPosition(v.VIN); err == nil {
 					vd.Position = pos
+				} else {
+					log.Printf("MySkoda GetPosition error for %s: %v", v.VIN, err)
 				}
 				if health, err := s.skodaClient.GetHealth(v.VIN); err == nil {
 					vd.Health = health
+				} else {
+					log.Printf("MySkoda GetHealth error for %s: %v", v.VIN, err)
 				}
 				data.Vehicles = append(data.Vehicles, vd)
 			}
