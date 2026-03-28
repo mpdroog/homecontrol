@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/mpdroog/homecontrol/alphaess"
 	"github.com/mpdroog/homecontrol/autocharge"
 	"github.com/mpdroog/homecontrol/myenergi"
@@ -151,6 +152,41 @@ func NewServer(cfg Config) *Server {
 			}
 		}
 
+		// Create a function to get prices from server cache
+		getPrices := func() *nordpool.Prices {
+			s.mu.RLock()
+			defer s.mu.RUnlock()
+			return s.data.Prices
+		}
+
+		// Create a function to get config values
+		getConfig := func() autocharge.Config {
+			return autocharge.Config{
+				ZappiSerial:  s.config.AutoChargeZappiSerial,
+				SkodaVIN:     s.config.AutoChargeSkodaVIN,
+				EnergyMarkup: s.config.AutoChargeEnergyMarkup,
+			}
+		}
+
+		// Create a function to get Zappi status from server cache
+		getZappis := func() []myenergi.Zappi {
+			s.mu.RLock()
+			defer s.mu.RUnlock()
+			return s.data.Zappis
+		}
+
+		// Create a function to get Skoda charging status from server cache
+		getCharging := func(vin string) *myskoda.Charging {
+			s.mu.RLock()
+			defer s.mu.RUnlock()
+			for _, v := range s.data.Vehicles {
+				if v.Vehicle.VIN == vin {
+					return v.Charging
+				}
+			}
+			return nil
+		}
+
 		// Create pushover client if configured
 		var pushClient *pushover.Client
 		if cfg.PushoverToken != "" && cfg.PushoverUser != "" {
@@ -159,12 +195,12 @@ func NewServer(cfg Config) *Server {
 
 		s.scheduler = autocharge.NewScheduler(
 			s.meClient,
-			s.npClient,
 			pushClient,
 			getSkodaClient,
-			cfg.AutoChargeZappiSerial,
-			cfg.AutoChargeSkodaVIN,
-			cfg.AutoChargeEnergyMarkup,
+			getPrices,
+			getConfig,
+			getZappis,
+			getCharging,
 		)
 	}
 
@@ -235,17 +271,11 @@ func (s *Server) refreshData() {
 		}
 	}
 
-	// Fetch MySkoda data (with auto re-login on failure)
-	if s.skodaClient == nil && s.config.MySkodaUsername != "" && s.config.MySkodaPassword != "" {
-		if err := s.initSkodaClient(); err != nil {
-			log.Printf("MySkoda re-init failed: %v", err)
-		}
-	}
+	// Fetch MySkoda data (client handles re-login internally)
 	if s.skodaClient != nil {
 		vehicles, err := s.skodaClient.GetVehicles()
 		if err != nil {
-			log.Printf("MySkoda GetVehicles failed: %v (will re-login next refresh)", err)
-			s.skodaClient = nil
+			log.Printf("MySkoda GetVehicles failed: %v", err)
 		} else {
 			for _, v := range vehicles {
 				vd := VehicleData{Vehicle: v}
@@ -588,5 +618,9 @@ func (s *Server) Run() error {
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	log.Printf("Starting server on %s", s.config.ListenAddr)
+
+	// Notify systemd that we're ready
+	daemon.SdNotify(false, daemon.SdNotifyReady)
+
 	return http.ListenAndServe(s.config.ListenAddr, nil)
 }

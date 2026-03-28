@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/coreos/go-systemd/v22/daemon"
 	"github.com/mpdroog/homecontrol/alphaess"
 	"github.com/mpdroog/homecontrol/myenergi"
 	"github.com/mpdroog/homecontrol/myskoda"
@@ -248,6 +249,9 @@ func (c *Collector) Run() error {
 
 	ticker := time.NewTicker(interval)
 	cleanupTicker := time.NewTicker(time.Hour) // Cleanup every hour
+
+	// Notify systemd that we're ready
+	daemon.SdNotify(false, daemon.SdNotifyReady)
 
 	for {
 		select {
