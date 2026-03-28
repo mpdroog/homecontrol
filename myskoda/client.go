@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,6 +29,7 @@ const (
 
 // Client is the MySkoda API client.
 type Client struct {
+	mu           sync.Mutex
 	httpClient   *http.Client
 	accessToken  string
 	refreshToken string
@@ -324,12 +326,28 @@ func (c *Client) followRedirects(resp *http.Response) (*http.Response, string, e
 }
 
 // Login authenticates with the MySkoda API using OAuth2 PKCE flow.
+// Thread-safe.
 func (c *Client) Login() error {
-	return c.LoginWithDebug(false)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.login()
+}
+
+// login is the internal login without locking. Caller must hold c.mu.
+func (c *Client) login() error {
+	return c.loginWithDebug(false)
 }
 
 // LoginWithDebug authenticates with optional debug output.
+// Thread-safe.
 func (c *Client) LoginWithDebug(debug bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.loginWithDebug(debug)
+}
+
+// loginWithDebug is the internal login with optional debug. Caller must hold c.mu.
+func (c *Client) loginWithDebug(debug bool) error {
 	verifier, challenge, err := generatePKCE()
 	if err != nil {
 		return fmt.Errorf("generating PKCE: %w", err)
@@ -604,7 +622,15 @@ func (c *Client) LoginWithDebug(debug bool) error {
 }
 
 // RefreshAccessToken refreshes the access token using the refresh token.
+// Thread-safe.
 func (c *Client) RefreshAccessToken() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.refreshAccessToken()
+}
+
+// refreshAccessToken refreshes the token. Caller must hold c.mu.
+func (c *Client) refreshAccessToken() error {
 	tokenURL := fmt.Sprintf("%s/api/v1/authentication/refresh-token?tokenType=CONNECT", baseURLSkoda)
 	tokenReq := map[string]string{
 		"refreshToken": c.refreshToken,
@@ -640,17 +666,33 @@ func (c *Client) RefreshAccessToken() error {
 }
 
 // ensureValidToken checks if the token is still valid and refreshes if needed.
+// Caller must hold c.mu.
 func (c *Client) ensureValidToken() error {
 	if time.Now().After(c.tokenExpiry) {
-		return c.RefreshAccessToken()
+		return c.refreshAccessToken()
 	}
 	return nil
 }
 
 // doRequest performs an authenticated API request.
+// Thread-safe with automatic retry on auth failures.
 func (c *Client) doRequest(method, path string, body io.Reader) (*http.Response, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.doRequestLocked(method, path, body, true)
+}
+
+// doRequestLocked performs the request. Caller must hold c.mu.
+func (c *Client) doRequestLocked(method, path string, body io.Reader, canRetry bool) (*http.Response, error) {
 	if err := c.ensureValidToken(); err != nil {
-		return nil, err
+		if !canRetry {
+			return nil, err
+		}
+		// Token refresh failed, try full re-login
+		if err := c.login(); err != nil {
+			return nil, fmt.Errorf("re-login failed: %w", err)
+		}
+		return c.doRequestLocked(method, path, body, false)
 	}
 
 	reqURL := baseURLSkoda + path
@@ -661,7 +703,21 @@ func (c *Client) doRequest(method, path string, body io.Reader) (*http.Response,
 	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	req.Header.Set("Content-Type", "application/json")
 
-	return c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// On auth failure or server error, retry once with fresh login
+	if canRetry && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode >= 500) {
+		resp.Body.Close()
+		if err := c.login(); err != nil {
+			return nil, fmt.Errorf("re-login failed after %d: %w", resp.StatusCode, err)
+		}
+		return c.doRequestLocked(method, path, body, false)
+	}
+
+	return resp, nil
 }
 
 // GetVehicles returns all vehicles in the user's garage.

@@ -65,28 +65,52 @@ type Session struct {
 // SkodaClientFunc is a function that returns the Skoda client (for lazy init/re-login).
 type SkodaClientFunc func() (*myskoda.Client, error)
 
+// PricesFunc is a function that returns the current NordPool prices (from web server cache).
+type PricesFunc func() *nordpool.Prices
+
+// ZappiController interface for Zappi charger control (allows mocking in tests).
+type ZappiController interface {
+	SetZappiMode(serial string, mode myenergi.ZappiMode) error
+}
+
+// Config holds the autocharge configuration values.
+type Config struct {
+	ZappiSerial  string
+	SkodaVIN     string
+	EnergyMarkup float64 // EUR/kWh markup for taxes/fees
+}
+
+// ConfigFunc is a function that returns the autocharge config from the server.
+type ConfigFunc func() Config
+
+// ZappiFunc is a function that returns the current Zappi status from server cache.
+type ZappiFunc func() []myenergi.Zappi
+
+// ChargingFunc is a function that returns the Skoda charging status from server cache.
+type ChargingFunc func(vin string) *myskoda.Charging
+
+// TimeFunc is a function that returns the current time (can be mocked for testing).
+type TimeFunc func() time.Time
+
 // Scheduler manages automated EV charging.
 type Scheduler struct {
-	// Config values
-	zappiSerial  string
-	skodaVIN     string
-	energyMarkup float64
-
 	enabled bool
 	state   State
 	session *Session
 
-	// Clients (passed in from main app)
-	zappiClient    *myenergi.Client
-	nordpoolClient *nordpool.Client
+	// Clients and data (passed in from main app)
+	zappiClient    *myenergi.Client // Only for control operations (SetZappiMode)
 	pushClient     *pushover.Client
-	getSkodaClient SkodaClientFunc
+	getSkodaClient SkodaClientFunc  // Only for control operations (StartCharging)
+	getPrices      PricesFunc
+	getConfig      ConfigFunc
+	getZappis      ZappiFunc     // Read Zappi status from server cache
+	getCharging    ChargingFunc  // Read Skoda charging status from server cache
+	getTime        TimeFunc      // Get current time (mockable for testing)
 
 	// State tracking
-	lastCarConnected  bool
-	lastPrices        *nordpool.Prices
-	lastPricesFetched time.Time
-	scheduledWindow   *ChargingWindow
+	lastCarConnected bool
+	scheduledWindow  *ChargingWindow
 
 	// Timing
 	chargingStartedAt     time.Time
@@ -103,26 +127,41 @@ type Scheduler struct {
 
 // NewScheduler creates a new autocharge scheduler using existing clients.
 func NewScheduler(
-	zappiClient *myenergi.Client,
-	nordpoolClient *nordpool.Client,
+	zappiClient *myenergi.Client, // For control operations only
 	pushClient *pushover.Client,
-	getSkodaClient SkodaClientFunc,
-	zappiSerial string,
-	skodaVIN string,
-	energyMarkup float64,
+	getSkodaClient SkodaClientFunc, // For control operations only
+	getPrices PricesFunc,
+	getConfig ConfigFunc,
+	getZappis ZappiFunc,
+	getCharging ChargingFunc,
 ) *Scheduler {
 	return &Scheduler{
-		zappiSerial:    zappiSerial,
-		skodaVIN:       skodaVIN,
-		energyMarkup:   energyMarkup,
 		enabled:        true,
 		state:          StateIdle,
 		stopChan:       make(chan struct{}),
 		zappiClient:    zappiClient,
-		nordpoolClient: nordpoolClient,
 		pushClient:     pushClient,
 		getSkodaClient: getSkodaClient,
+		getPrices:      getPrices,
+		getConfig:      getConfig,
+		getZappis:      getZappis,
+		getCharging:    getCharging,
+		getTime:        time.Now, // Default to real time
 	}
+}
+
+// SetTimeFunc sets a custom time function (for testing).
+func (s *Scheduler) SetTimeFunc(fn TimeFunc) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.getTime = fn
+}
+
+// Step manually triggers one cycle of the scheduler (for testing).
+// This checks both time-based events and polls Zappi status.
+func (s *Scheduler) Step() {
+	s.checkScheduledEvents()
+	s.poll()
 }
 
 // SetDebug enables debug logging.
@@ -238,21 +277,16 @@ func (s *Scheduler) poll() {
 		return
 	}
 
-	// Get Zappi status
-	zappis, err := s.zappiClient.GetZappiStatus()
-	if err != nil {
-		s.log("Error getting Zappi status: %v", err)
-		return
-	}
-
+	// Get Zappi status from server cache
+	zappis := s.getZappis()
 	if len(zappis) == 0 {
-		s.log("No Zappi devices found")
+		s.log("No Zappi devices found in server cache")
 		return
 	}
 
 	zappi := s.findZappi(zappis)
 	if zappi == nil {
-		s.log("Configured Zappi %s not found", s.zappiSerial)
+		s.log("Configured Zappi %s not found", s.getConfig().ZappiSerial)
 		return
 	}
 
@@ -292,12 +326,7 @@ func (s *Scheduler) checkScheduledEvents() {
 	}
 
 	loc, _ := time.LoadLocation("Europe/Amsterdam")
-	now := time.Now().In(loc)
-
-	// Check if we need to fetch new prices (around 13:00)
-	if now.Hour() == 13 && now.Minute() == 5 {
-		s.fetchPrices()
-	}
+	now := s.getTime().In(loc)
 
 	// 19:00 - Announce cheapest hours
 	if now.Hour() == 19 && now.Minute() == 0 {
@@ -334,12 +363,12 @@ func (s *Scheduler) checkScheduledEvents() {
 // findZappi finds the configured Zappi in the list.
 func (s *Scheduler) findZappi(zappis []myenergi.Zappi) *myenergi.Zappi {
 	for i, z := range zappis {
-		if fmt.Sprintf("%d", z.Serial) == s.zappiSerial {
+		if fmt.Sprintf("%d", z.Serial) == s.getConfig().ZappiSerial {
 			return &zappis[i]
 		}
 	}
 	// Return first Zappi if no serial configured
-	if s.zappiSerial == "" && len(zappis) > 0 {
+	if s.getConfig().ZappiSerial == "" && len(zappis) > 0 {
 		return &zappis[0]
 	}
 	return nil
@@ -389,9 +418,6 @@ func (s *Scheduler) handleCarDisconnected() {
 
 // handleAnnounceTime handles the 19:00 announcement.
 func (s *Scheduler) handleAnnounceTime() {
-	// Fetch latest prices
-	s.fetchPrices()
-
 	window := s.calculateCheapestWindow()
 	if window == nil {
 		return
@@ -434,25 +460,10 @@ func (s *Scheduler) handleMorningSummary(now time.Time) {
 		return
 	}
 
-	// Get Skoda battery status
-	if s.getSkodaClient == nil {
-		s.log("Skoda client not configured for summary")
-		return
-	}
-
-	skodaClient, err := s.getSkodaClient()
-	if err != nil {
-		s.log("Error getting Skoda client for summary: %v", err)
-		return
-	}
-
-	charging, err := skodaClient.GetCharging(s.skodaVIN)
-	if err != nil {
-		s.log("Error getting Skoda charging status: %v", err)
-		return
-	}
-
-	if charging.Status == nil {
+	// Get Skoda battery status from server cache
+	charging := s.getCharging(s.getConfig().SkodaVIN)
+	if charging == nil || charging.Status == nil {
+		s.log("No Skoda charging data available for summary")
 		return
 	}
 
@@ -480,34 +491,19 @@ func (s *Scheduler) handleMorningSummary(now time.Time) {
 	s.state = StateIdle
 }
 
-// fetchPrices fetches the latest electricity prices.
-func (s *Scheduler) fetchPrices() {
-	prices, err := s.nordpoolClient.GetPrices()
-	if err != nil {
-		s.log("Error fetching prices: %v", err)
-		return
-	}
-	s.lastPrices = prices
-	s.lastPricesFetched = time.Now()
-}
-
 // calculateCheapestWindow finds the cheapest 4 consecutive hours.
 func (s *Scheduler) calculateCheapestWindow() *ChargingWindow {
 	loc, _ := time.LoadLocation("Europe/Amsterdam")
-	now := time.Now().In(loc)
+	now := s.getTime().In(loc)
 
-	// Check if we have tomorrow's prices
-	if s.lastPrices == nil || len(s.lastPrices.Tomorrow) == 0 {
-		s.fetchPrices()
-	}
-
-	// If still no tomorrow's prices, use fallback
-	if s.lastPrices == nil || len(s.lastPrices.Tomorrow) == 0 {
+	// Get prices from web server cache
+	prices := s.getPrices()
+	if prices == nil || len(prices.Tomorrow) == 0 {
 		return s.getFallbackWindow(now)
 	}
 
 	// Combine today's remaining prices and tomorrow's prices
-	allPrices := s.combineAvailablePrices(now)
+	allPrices := s.combineAvailablePrices(now, prices)
 	if len(allPrices) < 4 {
 		return s.getFallbackWindow(now)
 	}
@@ -522,20 +518,20 @@ func (s *Scheduler) calculateCheapestWindow() *ChargingWindow {
 }
 
 // combineAvailablePrices combines today's remaining and tomorrow's prices.
-func (s *Scheduler) combineAvailablePrices(now time.Time) []nordpool.PricePoint {
-	var prices []nordpool.PricePoint
+func (s *Scheduler) combineAvailablePrices(now time.Time, prices *nordpool.Prices) []nordpool.PricePoint {
+	var result []nordpool.PricePoint
 
 	// Add today's remaining prices (future hours only)
-	for _, p := range s.lastPrices.Today {
+	for _, p := range prices.Today {
 		if p.Period.After(now) {
-			prices = append(prices, p)
+			result = append(result, p)
 		}
 	}
 
 	// Add all of tomorrow's prices
-	prices = append(prices, s.lastPrices.Tomorrow...)
+	result = append(result, prices.Tomorrow...)
 
-	return prices
+	return result
 }
 
 // findCheapestConsecutiveWindow finds the cheapest N consecutive hours.
@@ -629,25 +625,21 @@ func (s *Scheduler) startChargingSession() {
 		return
 	}
 
-	// Check SOC
-	if s.getSkodaClient != nil {
-		if skodaClient, err := s.getSkodaClient(); err == nil {
-			charging, err := skodaClient.GetCharging(s.skodaVIN)
-			if err == nil && charging.Status != nil {
-				soc := charging.Status.Battery.StateOfChargePercent
-				if soc >= 95 {
-					s.log("Skipping charging: SOC is already at %d%%", soc)
-					s.state = StateIdle
-					return
-				}
-			}
+	// Check SOC from server cache
+	charging := s.getCharging(s.getConfig().SkodaVIN)
+	if charging != nil && charging.Status != nil {
+		soc := charging.Status.Battery.StateOfChargePercent
+		if soc >= 95 {
+			s.log("Skipping charging: SOC is already at %d%%", soc)
+			s.state = StateIdle
+			return
 		}
 	}
 
 	s.log("Starting charging session")
 
 	// Get current charge level from Zappi
-	zappis, _ := s.zappiClient.GetZappiStatus()
+	zappis := s.getZappis()
 	var chargeAdded float64
 	if zappi := s.findZappi(zappis); zappi != nil {
 		chargeAdded = zappi.ChargeAdded
@@ -655,12 +647,12 @@ func (s *Scheduler) startChargingSession() {
 
 	s.session = &Session{
 		Window:           s.scheduledWindow,
-		StartedAt:        time.Now(),
+		StartedAt:        s.getTime(),
 		ChargeAddedStart: chargeAdded,
 	}
 
 	// Set Zappi to Fast mode
-	serial := s.zappiSerial
+	serial := s.getConfig().ZappiSerial
 	if serial == "" && len(zappis) > 0 {
 		serial = fmt.Sprintf("%d", zappis[0].Serial)
 	}
@@ -670,7 +662,7 @@ func (s *Scheduler) startChargingSession() {
 	}
 
 	s.state = StateStartingCharge
-	s.chargingStartedAt = time.Now()
+	s.chargingStartedAt = s.getTime()
 	s.chargingNotStartedFor = 0
 }
 
@@ -704,7 +696,7 @@ func (s *Scheduler) processStartingChargeState(zappi *myenergi.Zappi) {
 		s.log("Charging not started after 5 minutes, sending Skoda start command")
 		if s.getSkodaClient != nil {
 			if skodaClient, err := s.getSkodaClient(); err == nil {
-				if err := skodaClient.StartCharging(s.skodaVIN); err != nil {
+				if err := skodaClient.StartCharging(s.getConfig().SkodaVIN); err != nil {
 					s.log("Error sending Skoda start command: %v", err)
 				}
 			}
@@ -735,7 +727,7 @@ func (s *Scheduler) processMonitoringState(zappi *myenergi.Zappi) {
 		s.sendNotification("Charging Interrupted", "Attempting to resume charging")
 
 		// Try to restart
-		serial := s.zappiSerial
+		serial := s.getConfig().ZappiSerial
 		if serial == "" {
 			serial = fmt.Sprintf("%d", zappi.Serial)
 		}
@@ -744,7 +736,7 @@ func (s *Scheduler) processMonitoringState(zappi *myenergi.Zappi) {
 		}
 
 		s.state = StateStartingCharge
-		s.chargingStartedAt = time.Now()
+		s.chargingStartedAt = s.getTime()
 		s.session.SkodaWakeupSent = false
 		s.session.FailureNotified = false
 	}
@@ -758,8 +750,8 @@ func (s *Scheduler) endChargingSession() {
 	s.log("Ending charging session")
 
 	// Stop Zappi
-	serial := s.zappiSerial
-	zappis, _ := s.zappiClient.GetZappiStatus()
+	serial := s.getConfig().ZappiSerial
+	zappis := s.getZappis()
 	if serial == "" && len(zappis) > 0 {
 		serial = fmt.Sprintf("%d", zappis[0].Serial)
 	}
@@ -777,7 +769,7 @@ func (s *Scheduler) endChargingSession() {
 		// Calculate estimated cost
 		if s.scheduledWindow != nil && !s.scheduledWindow.IsFallback {
 			kwhCharged := s.session.ChargeAddedEnd - s.session.ChargeAddedStart
-			pricePerKwh := s.scheduledWindow.AvgPrice/1000 + s.energyMarkup
+			pricePerKwh := s.scheduledWindow.AvgPrice/1000 + s.getConfig().EnergyMarkup
 			s.session.TotalCost = kwhCharged * pricePerKwh
 		}
 	}
