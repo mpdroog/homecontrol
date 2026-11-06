@@ -1,132 +1,64 @@
 # homecontrol
 
-![Screenshot](dashboard.png)
+Charges the car through a myenergi Zappi in the cheapest day-ahead price
+slots before a deadline (e.g. Wednesday and Thursday 07:00, 90%).
 
-CLI/Web tool for monitoring and controlling home energy devices.
+Every minute it asks one question — *should the car charge right now?* — and
+switches the Zappi between **Fast** and **Stop** accordingly. There is no
+schedule state to get stuck: after a restart it simply decides again.
 
-## Supported Devices
+Why not Eco/Eco+? With a home battery that trades on the grid (NextEnergy),
+the Zappi sees battery export as "solar surplus": it charges the car with
+battery power and keeps stopping and starting. Fast in planned slots avoids that.
 
-- **MySkoda** - Electric vehicle status and charging control
-- **AlphaESS** - Home battery storage monitoring
-- **NordPool** - Energy price monitoring
-- **myenergi Zappi** - EV charger status and control
+## Behaviour
 
-## Installation
-
-```bash
-go build
-```
+- **Plan**: needed hours = (target − battery %) × capacity ÷ charge power × 1.15.
+  The cheapest 15-minute slots before the deadline are chosen (not necessarily
+  consecutive). Battery % comes from MySkoda; unknown means "assume empty".
+- **Waits** until prices up to the deadline are known (published ~13:00 the day
+  before). Exception: at or below `cheap_price` it always charges.
+- **No prices**: charges only when the deadline is too close to wait.
+- **Manual override**: change the Zappi mode in the myenergi app and homecontrol
+  keeps its hands off until the car is unplugged.
+- **Not charging** while it should: after 10 min it asks the car to start
+  (MySkoda), after 20 min it sends a notification.
+- **Notifications** (Pushover, or the log): reminder at 20:00 if the car is not
+  plugged in before a deadline, session summary on unplug (kWh, average EPEX
+  price, kWh that came from the home battery while charging).
 
 ## Configuration
 
-Copy `config.toml.example` to `config.toml` and fill in your credentials:
+Copy `config.toml.example` to `config.toml`. `[alphaess]`, `[myskoda]` and
+`[pushover]` are optional. Unknown keys are an error.
 
-```toml
-[myskoda]
-username = "your-email@example.com"
-password = "your-password"
+- myenergi API key: myaccount.myenergi.com → Manage Products → hub → Advanced →
+  Generate new API key.
+- AlphaESS: register the system (serial + check code) on https://open.alphaess.com.
 
-[alphaess]
-appid = "your-app-id"
-appsecret = "your-app-secret"
-sn = "ALD007"
+## Run
 
-[myenergi]
-hubserial = "12345678"
-password = "your-api-key"
+```sh
+go build -o homecontrol .
+./homecontrol -dry-run -once -debug   # one tick, only logs what it would do
+./homecontrol                        # run (Ctrl+C / SIGTERM to stop)
 ```
 
-### Getting Credentials
+Raspberry Pi (64-bit OS):
 
-**MySkoda**: Use your MySkoda app login credentials.
-
-**AlphaESS**: Register at https://open.alphaess.com/ to get your App ID and App Secret.
-
-**myenergi**:
-- Hub serial: Found in the myenergi app under your hub settings
-- Password: Generate an API key in the myenergi app
-
-## Usage
-
-```
-homecontrol [options] [command]
+```sh
+GOOS=linux GOARCH=arm64 go build -o homecontrol .
+scp homecontrol config.toml homecontrol.service pi:/opt/homecontrol/
+# on the Pi:
+sudo useradd --system homecontrol
+sudo cp /opt/homecontrol/homecontrol.service /etc/systemd/system/
+sudo systemctl enable --now homecontrol
+journalctl -u homecontrol -f
 ```
 
-### Options
+## Development
 
-| Option | Description |
-|--------|-------------|
-| `-config` | Path to config file (default: `config.toml`) |
-| `-debug` | Enable debug output |
-
-### Commands
-
-#### MySkoda (Electric Vehicle)
-
-| Command | Description |
-|---------|-------------|
-| `status` | Show battery/charging status (default command) |
-| `start [VIN]` | Start charging (uses first vehicle if VIN not specified) |
-| `stop [VIN]` | Stop charging (uses first vehicle if VIN not specified) |
-| `limit [VIN] PCT` | Set charge limit to PCT percent |
-
-#### AlphaESS (Home Battery)
-
-| Command | Description |
-|---------|-------------|
-| `battery` | Show AlphaESS home battery status |
-
-#### NordPool (Energy Prices)
-
-| Command | Description |
-|---------|-------------|
-| `prices` | Show hourly energy prices (today & tomorrow) |
-
-#### myenergi Zappi (EV Charger)
-
-| Command | Description |
-|---------|-------------|
-| `zappi` | Show Zappi EV charger status |
-| `zappi-start` | Start Zappi charging (Fast mode) |
-| `zappi-stop` | Stop Zappi charging |
-| `zappi-eco` | Set Zappi to Eco mode |
-| `zappi-eco+` | Set Zappi to Eco+ mode |
-| `zappi-boost KWH` | Boost charge for KWH kilowatt-hours |
-
-## Examples
-
-```bash
-# Show vehicle status
-./homecontrol status
-
-# Show energy prices
-./homecontrol prices
-
-# Show home battery status
-./homecontrol battery
-
-# Show Zappi status
-./homecontrol zappi
-
-# Start Zappi charging
-./homecontrol zappi-start
-
-# Stop Zappi charging
-./homecontrol zappi-stop
-
-# Set Zappi to Eco+ mode
-./homecontrol zappi-eco+
-
-# Boost charge 15 kWh
-./homecontrol zappi-boost 15
-
-# Use custom config file
-./homecontrol -config /path/to/config.toml status
-
-# Enable debug output
-./homecontrol -debug zappi
+```sh
+go test -race ./...
+golangci-lint run ./...   # strict config: all linters, see .golangci.yml
 ```
-
-## License
-
-MIT

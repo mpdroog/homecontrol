@@ -1,20 +1,26 @@
-[myskoda]
-username = "your-email@example.com"
-password = "your-password"
+[zappi]
+hub = "..."
+key = "..."
+serial = "12345678"
 
 [alphaess]
-appid = "your-app-id"
-appsecret = "your-app-secret"
-sn = "ALD007"
+app_id = "..."
+secret = "..."
+sn = "ALD0..."
 
-[myenergi]
-hubserial = "12345678"
-password = "your-app-password"
+# [myskoda]
+# username = "..."
+# password = "..."
+# vin = "TMB..."
 
-[weather]
-latitude = 52.3676
-longitude = 4.9041
+# [pushover]
+# token = "..."
+# user = "..."
 
-[pushover]
-token = "your-api-token"
-user = "your-user-or-group-key"
+[charge]
+days = ["Wednesday", "Thursday"]
+ready_by = "07:00"
+target_percent = 90
+battery_kwh = 32.3
+charge_kw = 3.4
+cheap_price = 0.0

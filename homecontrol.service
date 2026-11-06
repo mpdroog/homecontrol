@@ -1,0 +1,19 @@
+[Unit]
+Description=homecontrol: smart EV charging via Zappi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=homecontrol
+WorkingDirectory=/opt/homecontrol
+ExecStart=/opt/homecontrol/homecontrol -config /opt/homecontrol/config.toml
+Restart=always
+RestartSec=30
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

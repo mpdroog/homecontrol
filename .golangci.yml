@@ -1,0 +1,72 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  # Alles aan; alleen uitzetten met een reden.
+  default: all
+  disable:
+    - depguard # vraagt een allowlist van imports per project; dependencies worden in go.mod bewaakt
+    - wsl # verouderd in v2, vervangen door wsl_v5 (staat aan)
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true # ook `_ = f()` is verboden
+    govet:
+      enable-all: true
+    revive:
+      enable-all-rules: true
+      rules:
+        - name: line-length-limit
+          arguments: [140]
+        - name: add-constant
+          disabled: true # dubbel met mnd
+        - name: cognitive-complexity
+          arguments: [15]
+        - name: cyclomatic
+          arguments: [12]
+        - name: function-length
+          arguments: [50, 0]
+    gocritic:
+      enable-all: true
+    gosec:
+      severity: low
+      confidence: low
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    exhaustive:
+      default-signifies-exhaustive: false
+    varnamelen:
+      ignore-names: [ok, err, wd, db]
+      ignore-decls:
+        - t *testing.T
+        - z *myenergi.Zappi
+        - z myenergi.Zappi
+        - c *Controller
+        - p *priceCache
+    lll:
+      line-length: 140
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [funlen, dupl, varnamelen, mnd]
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+    - gci
+    - golines
+  settings:
+    golines:
+      max-len: 140
+    gci:
+      sections: [standard, default, localmodule]
+
+issues:
+  max-issues-per-linter: 0 # alles tonen
+  max-same-issues: 0
