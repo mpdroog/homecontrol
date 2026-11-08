@@ -2,14 +2,17 @@
 Description=homecontrol: smart EV charging via Zappi
 After=network-online.target
 Wants=network-online.target
+# On failure: retry every 15 min, give up after 4 failures within 2 h.
+StartLimitIntervalSec=2h
+StartLimitBurst=4
 
 [Service]
 Type=simple
 User=homecontrol
 WorkingDirectory=/opt/homecontrol
-ExecStart=/opt/homecontrol/homecontrol -config /opt/homecontrol/config.toml
-Restart=always
-RestartSec=30
+ExecStart=/opt/homecontrol/homecontrol -w -c /opt/homecontrol/config.toml
+Restart=on-failure
+RestartSec=15min
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

@@ -60,13 +60,15 @@ type Client struct {
 	log     *slog.Logger
 	user    string
 	pass    string
+	vin     string
 	access  string
 	refresh string
 	mu      sync.Mutex
 }
 
-// New creates a client; it logs in lazily on the first request.
-func New(user, pass string, log *slog.Logger) (*Client, error) {
+// New creates a client for the car with the given VIN; it logs in lazily on
+// the first request.
+func New(user, pass, vin string, log *slog.Logger) (*Client, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, fmt.Errorf("myskoda: cookie jar: %w", err)
@@ -82,6 +84,7 @@ func New(user, pass string, log *slog.Logger) (*Client, error) {
 		log:     log,
 		user:    user,
 		pass:    pass,
+		vin:     vin,
 		access:  "",
 		refresh: "",
 		expiry:  time.Time{},
@@ -90,8 +93,8 @@ func New(user, pass string, log *slog.Logger) (*Client, error) {
 }
 
 // BatteryPercent returns the state of charge of the car.
-func (c *Client) BatteryPercent(ctx context.Context, vin string) (int, error) {
-	body, err := c.api(ctx, http.MethodGet, "/api/v1/charging/"+url.PathEscape(vin), nil)
+func (c *Client) BatteryPercent(ctx context.Context) (int, error) {
+	body, err := c.api(ctx, http.MethodGet, "/api/v1/charging/"+url.PathEscape(c.vin), nil)
 	if err != nil {
 		return 0, fmt.Errorf("myskoda charging status: %w", err)
 	}
@@ -123,8 +126,8 @@ type batteryStatus struct {
 }
 
 // StartCharging asks the car to start charging (wakes it if it went to sleep).
-func (c *Client) StartCharging(ctx context.Context, vin string) error {
-	_, err := c.api(ctx, http.MethodPost, "/api/v1/charging/"+url.PathEscape(vin)+"/start", nil)
+func (c *Client) StartCharging(ctx context.Context) error {
+	_, err := c.api(ctx, http.MethodPost, "/api/v1/charging/"+url.PathEscape(c.vin)+"/start", nil)
 	if err != nil {
 		return fmt.Errorf("myskoda start charging: %w", err)
 	}

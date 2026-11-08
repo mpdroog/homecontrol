@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,12 +16,13 @@ import (
 var errFake = errors.New("fake failure")
 
 type fakeCharger struct {
-	setErr error
-	sets   []myenergi.Mode
-	status myenergi.Zappi
+	statusErr error
+	setErr    error
+	sets      []myenergi.Mode
+	status    myenergi.Zappi
 }
 
-func (f *fakeCharger) Status(context.Context) (myenergi.Zappi, error) { return f.status, nil }
+func (f *fakeCharger) Status(context.Context) (myenergi.Zappi, error) { return f.status, f.statusErr }
 
 func (f *fakeCharger) SetMode(_ context.Context, mode myenergi.Mode) error {
 	if f.setErr != nil {
@@ -94,7 +96,7 @@ func newRig(t *testing.T) *rig {
 	prices := hourly(start, 0.30, 0.29, 0.28, 0.27, 0.26, 0.25, 0.15, 0.05, 0.04, 0.03, 0.06, 0.16, 0.24, 0.01, 0.01)
 
 	r := &rig{
-		charger: &fakeCharger{setErr: nil, sets: nil, status: myenergi.Zappi{
+		charger: &fakeCharger{statusErr: nil, setErr: nil, sets: nil, status: myenergi.Zappi{
 			Plug: "B1", Serial: 1, Mode: myenergi.ModeStop, Status: myenergi.StatusPaused,
 			ChargeAddedKWh: 0, ChargePowerW: 0, VoltageDeciV: 2300, FrequencyHz: 50,
 		}},
@@ -211,6 +213,19 @@ func TestStopsAtTarget(t *testing.T) {
 	}
 }
 
+func TestChargesAtCheapPriceOutsidePlan(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.prices.slots[4].Price = -0.02 // 22:00: negative, at or below cheap_price (0)
+
+	r.tick(t, r.at(22, 0))
+
+	if got := r.lastSet(t); got != myenergi.ModeFast {
+		t.Fatalf("mode %s at a negative price, want Fast", got)
+	}
+}
+
 func TestWaitsWhenPricesDoNotReachDeadline(t *testing.T) {
 	t.Parallel()
 
@@ -222,6 +237,69 @@ func TestWaitsWhenPricesDoNotReachDeadline(t *testing.T) {
 
 	if got := r.lastSet(t); got != myenergi.ModeStop {
 		t.Fatalf("mode %s without prices up to the deadline, want Stop", got)
+	}
+}
+
+func TestChargesWithoutTomorrowPricesWhenDeadlineClose(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.prices.slots = r.prices.slots[:6] // tomorrow never published / fetch failed
+
+	r.tick(t, r.at(4, 0)) // 70% → 90% needs ~2.3 h, 3 h left
+	r.tick(t, r.at(4, 1))
+
+	if got := r.lastSet(t); got != myenergi.ModeFast {
+		t.Fatalf("mode %s without prices close to the deadline, want Fast", got)
+	}
+
+	if len(r.notifier.titles) != 1 || r.notifier.titles[0] != "Laden zonder prijzen" {
+		t.Fatalf("notifications %v, want one no-prices notice", r.notifier.titles)
+	}
+}
+
+func TestZappiDownNotifiesOnceAndOnRecovery(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.charger.statusErr = errFake
+
+	for minute := range 40 {
+		err := r.ctrl.Tick(context.Background(), r.at(21, minute))
+		if !errors.Is(err, errFake) {
+			t.Fatalf("tick: %v, want the Zappi error", err)
+		}
+	}
+
+	r.charger.statusErr = nil
+	r.tick(t, r.at(21, 40))
+
+	want := []string{"Zappi werkt niet", "Zappi werkt weer"}
+	if !slices.Equal(r.notifier.titles, want) {
+		t.Fatalf("notifications %v, want %v", r.notifier.titles, want)
+	}
+}
+
+func TestMySkodaDownNotifiesAfterADay(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.car.err = errFake
+	start := r.at(18, 0)
+
+	for step := range 4 * 25 { // every 15 minutes for 25 hours
+		err := r.ctrl.Tick(context.Background(), start.Add(time.Duration(step)*15*time.Minute))
+		if err != nil && !errors.Is(err, errFake) {
+			t.Fatalf("tick: %v", err)
+		}
+	}
+
+	if n := slices.Index(r.notifier.titles, "MySkoda werkt niet"); n < 0 {
+		t.Fatalf("notifications %v, want a MySkoda notice", r.notifier.titles)
+	}
+
+	if strings.Count(strings.Join(r.notifier.titles, "|"), "MySkoda") != 1 {
+		t.Fatalf("notifications %v, want exactly one MySkoda notice", r.notifier.titles)
 	}
 }
 
@@ -325,13 +403,9 @@ func TestCarFullIsNotAFailure(t *testing.T) {
 	r := newRig(t)
 	r.charger.status.Mode = myenergi.ModeFast
 	r.charger.status.Status = myenergi.StatusComplete
-	r.car.err = errFake // battery level unknown
 
 	for minute := range 30 {
-		err := r.ctrl.Tick(context.Background(), r.at(2, minute))
-		if err != nil && !errors.Is(err, errFake) {
-			t.Fatalf("tick: %v", err)
-		}
+		r.tick(t, r.at(2, minute))
 	}
 
 	if len(r.notifier.titles) != 0 {
@@ -340,6 +414,27 @@ func TestCarFullIsNotAFailure(t *testing.T) {
 
 	if got := r.lastSet(t); got != myenergi.ModeStop {
 		t.Fatalf("mode %s with a full car, want Stop", got)
+	}
+}
+
+func TestUnknownBatteryLevelChargesAsIfEmpty(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.car.err = errFake // MySkoda down
+
+	// 70% would wait for the night, but "empty" needs ~10.4 h and only 9 h are left: charge now.
+	err := r.ctrl.Tick(context.Background(), r.at(22, 0))
+	if !errors.Is(err, errFake) {
+		t.Fatalf("error %v, want the MySkoda error reported", err)
+	}
+
+	if got := r.lastSet(t); got != myenergi.ModeFast {
+		t.Fatalf("mode %s with unknown battery level, want Fast", got)
+	}
+
+	if len(r.notifier.titles) != 0 {
+		t.Fatalf("notifications %v, want none", r.notifier.titles)
 	}
 }
 

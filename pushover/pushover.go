@@ -33,8 +33,8 @@ func New(token, user string) *Client {
 	}
 }
 
-// Send delivers a message with a title.
-func (c *Client) Send(ctx context.Context, title, message string) error {
+// Notify delivers a message with a title.
+func (c *Client) Notify(ctx context.Context, title, message string) error {
 	form := url.Values{
 		"token":   {c.token},
 		"user":    {c.user},

@@ -30,6 +30,9 @@ const (
 	chargeMargin = 1.15
 	// maxTickGap caps energy integration when ticks were missed.
 	maxTickGap = 5 * time.Minute
+	// zappiDownAfter / skodaDownAfter: notify after failing this long.
+	zappiDownAfter = 30 * time.Minute
+	skodaDownAfter = 24 * time.Hour
 	// summaryMinKWh: no summary for sessions below this.
 	summaryMinKWh = 0.1
 	percent       = 100.0
@@ -74,11 +77,20 @@ type session struct {
 	wokeCar      bool
 	alarmSent    bool
 	overrideSent bool
+	noPricesSent bool
+}
+
+// outage tracks a source that keeps failing, to notify once (and on recovery).
+type outage struct {
+	since time.Time // first failure of the current streak (zero = ok)
+	sent  bool      // "down" notification sent
 }
 
 // controller decides every tick whether the car should charge now and sets
 // the Zappi accordingly. It keeps only a little state; a restart is harmless.
 type controller struct {
+	zappiDown   outage
+	skodaDown   outage
 	lastSetAt   time.Time
 	lastTick    time.Time
 	socTriedAt  time.Time
@@ -109,6 +121,7 @@ func newSession(active bool) session {
 		wokeCar:      false,
 		alarmSent:    false,
 		overrideSent: false,
+		noPricesSent: false,
 	}
 }
 
@@ -117,6 +130,8 @@ func newController(rules chargeRules, charger Charger, car Car, battery HomeBatt
 	prices PriceSource, notifier Notifier, log *slog.Logger,
 ) *controller {
 	return &controller{
+		zappiDown:   outage{since: time.Time{}, sent: false},
+		skodaDown:   outage{since: time.Time{}, sent: false},
 		lastSetAt:   time.Time{},
 		lastTick:    time.Time{},
 		socTriedAt:  time.Time{},
@@ -142,15 +157,17 @@ func (c *controller) Tick(ctx context.Context, now time.Time) error {
 	elapsed := c.sinceLastTick(now)
 
 	z, err := c.charger.Status(ctx)
+	alertErr := c.track(ctx, now, &c.zappiDown, "Zappi", zappiDownAfter, err)
+
 	if err != nil {
-		return fmt.Errorf("zappi status: %w", err)
+		return errors.Join(fmt.Errorf("zappi status: %w", err), alertErr)
 	}
 
 	if !z.Connected() {
 		return c.disconnected(ctx, now)
 	}
 
-	var errs []error
+	errs := []error{alertErr}
 
 	if !c.sess.active {
 		c.sess = newSession(true)
@@ -265,12 +282,9 @@ func (c *controller) decide(ctx context.Context, now time.Time, z *myenergi.Zapp
 func (c *controller) decideByPrice(ctx context.Context, now, deadline time.Time, hours float64) (myenergi.Mode, string, error) {
 	slots, err := c.prices.Slots(ctx, now)
 	if err != nil {
-		// Without prices: only charge when it is needed to make the deadline.
-		if deadline.Sub(now) <= time.Duration((hours+1)*float64(time.Hour)) {
-			return myenergi.ModeFast, "no prices, deadline close", fmt.Errorf("prices: %w", err)
-		}
+		mode, reason, notifyErr := c.withoutPrices(ctx, now, deadline, hours)
 
-		return myenergi.ModeStop, "no prices, deadline far", fmt.Errorf("prices: %w", err)
+		return mode, reason, errors.Join(fmt.Errorf("prices: %w", err), notifyErr)
 	}
 
 	if cur, ok := slotAt(slots, now); ok && cur.Price <= c.rules.CheapPrice {
@@ -278,7 +292,7 @@ func (c *controller) decideByPrice(ctx context.Context, now, deadline time.Time,
 	}
 
 	if !covers(slots, deadline) {
-		return myenergi.ModeStop, "waiting for prices up to " + deadline.Format("Mon 15:04"), nil
+		return c.withoutPrices(ctx, now, deadline, hours)
 	}
 
 	plan := planSlots(slots, now, deadline, hours)
@@ -287,6 +301,23 @@ func (c *controller) decideByPrice(ctx context.Context, now, deadline time.Time,
 	}
 
 	return myenergi.ModeStop, fmt.Sprintf("not a planned slot (%.1fh needed before %s)", hours, deadline.Format("Mon 15:04")), nil
+}
+
+// withoutPrices decides when prices up to the deadline are missing (fetch
+// failed or not published): wait, unless waiting longer would miss the deadline.
+func (c *controller) withoutPrices(ctx context.Context, now, deadline time.Time, hours float64) (myenergi.Mode, string, error) {
+	if deadline.Sub(now) > time.Duration((hours+1)*float64(time.Hour)) {
+		return myenergi.ModeStop, "waiting for prices up to " + deadline.Format("Mon 15:04"), nil
+	}
+
+	if c.sess.noPricesSent {
+		return myenergi.ModeFast, "no prices, deadline close", nil
+	}
+
+	c.sess.noPricesSent = true
+
+	return myenergi.ModeFast, "no prices, deadline close", c.notify(ctx, "Laden zonder prijzen",
+		fmt.Sprintf("Geen prijzen tot %s, ik laad nu om de deadline te halen.", deadline.Format("15:04")))
 }
 
 // hoursNeeded estimates the charge time to reach the target; with an unknown
@@ -405,16 +436,49 @@ func (c *controller) refreshSoC(ctx context.Context, now time.Time) error {
 
 	c.socTriedAt = now
 
-	p, err := c.car.BatteryPercent(ctx)
+	level, err := c.car.BatteryPercent(ctx)
+	alertErr := c.track(ctx, now, &c.skodaDown, "MySkoda", skodaDownAfter, err)
+
 	if err != nil {
-		return fmt.Errorf("car battery level: %w", err)
+		return errors.Join(fmt.Errorf("car battery level: %w", err), alertErr)
 	}
 
-	c.soc, c.socOKAt = p, now
+	c.soc, c.socOKAt = level, now
 
-	return nil
+	return alertErr
 }
 
+// track notifies once when a source has failed for longer than after, and
+// once when it works again.
+func (c *controller) track(ctx context.Context, now time.Time, state *outage, name string, after time.Duration, err error) error {
+	if err == nil {
+		wasSent := state.sent
+		*state = outage{since: time.Time{}, sent: false}
+
+		if !wasSent {
+			return nil
+		}
+
+		return c.notify(ctx, name+" werkt weer", name+" geeft weer antwoord.")
+	}
+
+	if state.since.IsZero() {
+		state.since = now
+	}
+
+	if state.sent || now.Sub(state.since) < after {
+		return nil
+	}
+
+	state.sent = true
+
+	return c.notify(ctx, name+" werkt niet",
+		fmt.Sprintf("%s geeft al %s fouten. Laatste: %v", name, now.Sub(state.since).Round(time.Minute), err))
+}
+
+// socKnown reports whether a recent battery level is available. Without it
+// (no MySkoda, or MySkoda failing) an empty battery is assumed; the Zappi
+// reporting "complete" stops the charge.
 func (c *controller) socKnown(now time.Time) bool {
 	return !c.socOKAt.IsZero() && now.Sub(c.socOKAt) <= socMaxAge
 }

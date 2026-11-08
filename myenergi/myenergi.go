@@ -80,26 +80,29 @@ func (z *Zappi) Voltage() float64 {
 	return z.VoltageDeciV / deciPerUnit
 }
 
-// Client talks to the myenergi cloud for one hub.
+// Client talks to the myenergi cloud for one Zappi.
 type Client struct {
 	http   *http.Client
 	server string // e.g. https://s18.myenergi.net, discovered via the director
+	serial string // Zappi serial
 }
 
-// New creates a client; hub is the hub (or vHub) serial, key the API key.
-func New(hub, key string) *Client {
+// New creates a client; hub is the hub (or vHub) serial, key the API key,
+// serial the Zappi serial.
+func New(hub, key, serial string) *Client {
 	return &Client{
 		http: &http.Client{ //nolint:exhaustruct // stdlib defaults for redirects and cookies
 			Transport: &digest.Transport{Username: hub, Password: key}, //nolint:exhaustruct // library defaults
 			Timeout:   timeout,
 		},
 		server: "",
+		serial: serial,
 	}
 }
 
-// Zappi returns the status of the Zappi with the given serial.
-func (c *Client) Zappi(ctx context.Context, serial string) (Zappi, error) {
-	resp, err := c.get(ctx, "/cgi-jstatus-Z"+serial)
+// Status returns the status of the Zappi.
+func (c *Client) Status(ctx context.Context) (Zappi, error) {
+	resp, err := c.get(ctx, "/cgi-jstatus-Z"+c.serial)
 	if err != nil {
 		return Zappi{}, fmt.Errorf("zappi status: %w", err)
 	}
@@ -114,15 +117,15 @@ func (c *Client) Zappi(ctx context.Context, serial string) (Zappi, error) {
 	}
 
 	if len(out.Zappi) != 1 {
-		return Zappi{}, fmt.Errorf("zappi status: %w: got %d devices for serial %s", ErrUnexpected, len(out.Zappi), serial)
+		return Zappi{}, fmt.Errorf("zappi status: %w: got %d devices for serial %s", ErrUnexpected, len(out.Zappi), c.serial)
 	}
 
 	return out.Zappi[0], nil
 }
 
 // SetMode switches the Zappi to the given charge mode.
-func (c *Client) SetMode(ctx context.Context, serial string, mode Mode) error {
-	_, err := c.get(ctx, fmt.Sprintf("/cgi-zappi-mode-Z%s-%d-0-0-0000", serial, mode))
+func (c *Client) SetMode(ctx context.Context, mode Mode) error {
+	_, err := c.get(ctx, fmt.Sprintf("/cgi-zappi-mode-Z%s-%d-0-0-0000", c.serial, mode))
 	if err != nil {
 		return fmt.Errorf("zappi set mode %s: %w", mode, err)
 	}

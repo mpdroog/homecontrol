@@ -53,7 +53,7 @@ linters:
   exclusions:
     rules:
       - path: _test\.go
-        linters: [funlen, dupl, varnamelen, mnd]
+        linters: [funlen, dupl, varnamelen, mnd, testpackage] # testpackage: tests may use unexported helpers
 
 formatters:
   enable:
