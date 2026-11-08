@@ -12,6 +12,7 @@ import (
 	_ "time/tzdata" // the Pi may lack zoneinfo
 
 	"github.com/mpdroog/homecontrol/alphaess"
+	"github.com/mpdroog/homecontrol/cald"
 	"github.com/mpdroog/homecontrol/myenergi"
 	"github.com/mpdroog/homecontrol/myskoda"
 	"github.com/mpdroog/homecontrol/nordpool"
@@ -118,5 +119,10 @@ func build(cfg *config, rules chargeRules, opts options, log *slog.Logger) (*con
 		}
 	}
 
-	return newController(rules, charger, car, battery, newPriceCache(nordpool.New(), log), notifier, log), nil
+	ctrl := newController(rules, charger, car, battery, newPriceCache(nordpool.New(), log), notifier, log)
+	if cfg.Cald != nil {
+		ctrl.calendar = newCalendarCache(cald.New(cfg.Cald.URL, cfg.Cald.User, cfg.Cald.Pass), rules.ReadyBy)
+	}
+
+	return ctrl, nil
 }

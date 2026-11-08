@@ -8,6 +8,11 @@ app_id = "..."
 secret = "..."
 sn = "ALD0..."
 
+# [cald]
+# url = "https://ical.rootdev.nl"
+# user = "..."
+# pass = "..."
+
 # [myskoda]
 # username = "..."
 # password = "..."

@@ -106,7 +106,7 @@ func TestNextDeadline(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, ok := nextDeadline(tc.now, days, readyBy)
+			got, ok := nextDeadline(tc.now, days, readyBy, dayOverrides{extra: nil, skip: nil})
 			if !ok || !got.Equal(tc.want) {
 				t.Fatalf("nextDeadline(%s) = %s, %v; want %s", tc.now, got, ok, tc.want)
 			}
@@ -121,7 +121,38 @@ func TestNextDeadline(t *testing.T) {
 func TestNextDeadlineNoDays(t *testing.T) {
 	t.Parallel()
 
-	if _, ok := nextDeadline(time.Now(), nil, time.Hour); ok {
+	if _, ok := nextDeadline(time.Now(), nil, time.Hour, dayOverrides{extra: nil, skip: nil}); ok {
 		t.Fatal("want no deadline without days")
+	}
+}
+
+func TestNextDeadlineWithOverrides(t *testing.T) {
+	t.Parallel()
+
+	loc := mustLoc(t)
+	days := []time.Weekday{time.Wednesday, time.Thursday}
+	ov := dayOverrides{
+		extra: map[string]time.Duration{"2026-11-09": 6*time.Hour + 30*time.Minute}, // Monday
+		skip:  map[string]bool{"2026-11-11": true},                                  // Wednesday
+	}
+
+	tests := []struct {
+		now  time.Time
+		want time.Time
+		name string
+	}{
+		{time.Date(2026, 11, 8, 20, 0, 0, 0, loc), time.Date(2026, 11, 9, 6, 30, 0, 0, loc), "extra monday"},
+		{time.Date(2026, 11, 9, 7, 0, 0, 0, loc), time.Date(2026, 11, 12, 7, 0, 0, 0, loc), "wednesday skipped"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := nextDeadline(tc.now, days, 7*time.Hour, ov)
+			if !ok || !got.Equal(tc.want) {
+				t.Fatalf("nextDeadline(%s) = %s, %v; want %s", tc.now, got, ok, tc.want)
+			}
+		})
 	}
 }

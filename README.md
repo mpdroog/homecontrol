@@ -18,6 +18,10 @@ battery power and keeps stopping and starting. Fast in planned slots avoids that
   consecutive). Battery % comes from MySkoda; when unknown (not configured or
   failing) it assumes an empty battery. The Zappi is leading: "complete"
   means Stop.
+- **Calendar** (optional, [cald](https://github.com/mpdroog/cald)): an event
+  tagged `[auto]` adds a charge day (ready by `ready_by`, or earlier when the
+  event starts earlier); `[geenauto]` skips that day. Read every 15 minutes,
+  8 days ahead. When cald is unreachable the weekly `days` still apply.
 - **Waits** until prices up to the deadline are known (published ~13:00 the day
   before). Exception: at or below `cheap_price` it always charges.
 - **No prices** (fetch failed or tomorrow not published): charges only when
@@ -64,7 +68,9 @@ Tick, every minute:
          └─ YES → hands off until unplug
               PUSH ▶ "Slim laden gepauzeerd"   (once per session)
       7. decide(): Stop or Fast
-         ├─ Zappi "complete" / battery ≥ target / no charge days → Stop
+         ├─ next deadline = weekly days + cald [auto] − cald [geenauto]
+         │    cald failing ≥ 6 h → PUSH ▶ "Agenda werkt niet"; works again → PUSH ▶ "Agenda werkt weer"
+         ├─ Zappi "complete" / battery ≥ target / no charge day this week → Stop
          ├─ price ≤ cheap_price → Fast
          ├─ no prices up to the deadline (fetch failed / not published):
          │    deadline close → Fast + PUSH ▶ "Laden zonder prijzen" (once per session)
@@ -82,8 +88,8 @@ are only logged (`journalctl -u homecontrol`).
 
 ## Configuration
 
-Copy `config.toml.example` to `config.toml`. `[alphaess]`, `[myskoda]` and
-`[pushover]` are optional. Unknown keys are an error.
+Copy `config.toml.example` to `config.toml`. `[alphaess]`, `[cald]`,
+`[myskoda]` and `[pushover]` are optional. Unknown keys are an error.
 
 - myenergi API key: myaccount.myenergi.com → Manage Products → hub → Advanced →
   Generate new API key.

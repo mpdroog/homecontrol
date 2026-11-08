@@ -74,17 +74,35 @@ func covers(slots []slot, moment time.Time) bool {
 	return slices.ContainsFunc(slots, func(candidate slot) bool { return !candidate.End.Before(moment) })
 }
 
-// nextDeadline returns the first "ready by" moment strictly after now on one
-// of the given weekdays, e.g. Wednesday 07:00.
-func nextDeadline(now time.Time, days []time.Weekday, readyBy time.Duration) (time.Time, bool) {
+// dayOverrides are calendar exceptions keyed by local date ("2006-01-02"):
+// extra charge days with their ready-by time of day, and skipped days.
+type dayOverrides struct {
+	extra map[string]time.Duration
+	skip  map[string]bool
+}
+
+// nextDeadline returns the first "ready by" moment strictly after now: on one
+// of the given weekdays (e.g. Wednesday 07:00) or an extra calendar day, and
+// not on a skipped day.
+func nextDeadline(now time.Time, days []time.Weekday, readyBy time.Duration, overrides dayOverrides) (time.Time, bool) {
 	const week = 8 // today plus the next 7 days
 
 	for offset := range week {
 		day := now.AddDate(0, 0, offset)
-		// time.Date instead of midnight+duration: stays right on DST switch days.
-		deadline := time.Date(day.Year(), day.Month(), day.Day(), 0, int(readyBy/time.Minute), 0, 0, now.Location())
+		key := day.Format(time.DateOnly)
 
-		if deadline.After(now) && slices.Contains(days, deadline.Weekday()) {
+		readyAt, extra := overrides.extra[key]
+		if overrides.skip[key] || (!extra && !slices.Contains(days, day.Weekday())) {
+			continue
+		}
+
+		if !extra {
+			readyAt = readyBy
+		}
+
+		// time.Date instead of midnight+duration: stays right on DST switch days.
+		deadline := time.Date(day.Year(), day.Month(), day.Day(), 0, int(readyAt/time.Minute), 0, 0, now.Location())
+		if deadline.After(now) {
 			return deadline, true
 		}
 	}

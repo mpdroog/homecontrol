@@ -303,6 +303,32 @@ func TestMySkodaDownNotifiesAfterADay(t *testing.T) {
 	}
 }
 
+type fakeCalendar struct {
+	ov dayOverrides
+}
+
+func (f *fakeCalendar) Overrides(context.Context, time.Time) (dayOverrides, error) { return f.ov, nil }
+
+func TestSkippedDayFromCalendar(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.ctrl.calendar = &fakeCalendar{ov: dayOverrides{extra: nil, skip: map[string]bool{"2026-11-11": true}}}
+
+	r.tick(t, r.at(3, 0)) // normally a planned slot for Wednesday 07:00
+
+	if len(r.charger.sets) != 0 {
+		t.Fatalf("mode set %v on a skipped Wednesday, want untouched (Stop)", r.charger.sets)
+	}
+
+	r.charger.status.Plug = "A"
+	r.tick(t, r.at(20, 0)) // Tuesday 20:00: no reminder, next deadline is Thursday
+
+	if len(r.notifier.titles) != 0 {
+		t.Fatalf("notifications %v, want none", r.notifier.titles)
+	}
+}
+
 func TestPriceErrorFarFromDeadlineStopsAndReports(t *testing.T) {
 	t.Parallel()
 

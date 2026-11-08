@@ -33,6 +33,7 @@ const (
 	// zappiDownAfter / skodaDownAfter: notify after failing this long.
 	zappiDownAfter = 30 * time.Minute
 	skodaDownAfter = 24 * time.Hour
+	caldDownAfter  = 6 * time.Hour
 	// summaryMinKWh: no summary for sessions below this.
 	summaryMinKWh = 0.1
 	percent       = 100.0
@@ -91,12 +92,14 @@ type outage struct {
 type controller struct {
 	zappiDown   outage
 	skodaDown   outage
+	caldDown    outage
 	lastSetAt   time.Time
 	lastTick    time.Time
 	socTriedAt  time.Time
 	socOKAt     time.Time
 	remindedFor time.Time
 	prices      PriceSource
+	calendar    Calendar    // nil if not configured
 	car         Car         // nil if not configured
 	battery     HomeBattery // nil if not configured
 	charger     Charger
@@ -132,12 +135,14 @@ func newController(rules chargeRules, charger Charger, car Car, battery HomeBatt
 	return &controller{
 		zappiDown:   outage{since: time.Time{}, sent: false},
 		skodaDown:   outage{since: time.Time{}, sent: false},
+		caldDown:    outage{since: time.Time{}, sent: false},
 		lastSetAt:   time.Time{},
 		lastTick:    time.Time{},
 		socTriedAt:  time.Time{},
 		socOKAt:     time.Time{},
 		remindedFor: time.Time{},
 		prices:      prices,
+		calendar:    nil,
 		car:         car,
 		battery:     battery,
 		charger:     charger,
@@ -239,7 +244,9 @@ func (c *controller) disconnected(ctx context.Context, now time.Time) error {
 	c.sess = newSession(false)
 	c.lastSet, c.override = 0, false
 
-	deadline, ok := nextDeadline(now, c.rules.Days, c.rules.ReadyBy)
+	deadline, ok, err := c.deadline(ctx, now)
+	errs = append(errs, err)
+
 	if !ok || deadline.Sub(now) > reminderLead || now.Hour() < reminderHour || c.remindedFor.Equal(deadline) {
 		return errors.Join(errs...)
 	}
@@ -270,12 +277,32 @@ func (c *controller) decide(ctx context.Context, now time.Time, z *myenergi.Zapp
 		return myenergi.ModeStop, fmt.Sprintf("battery %d%% >= target", c.soc), nil
 	}
 
-	deadline, ok := nextDeadline(now, c.rules.Days, c.rules.ReadyBy)
+	deadline, ok, calErr := c.deadline(ctx, now)
 	if !ok {
-		return myenergi.ModeStop, "no charge days configured", nil
+		return myenergi.ModeStop, "no charge day in the coming week", calErr
 	}
 
-	return c.decideByPrice(ctx, now, deadline, c.hoursNeeded(now))
+	mode, reason, err := c.decideByPrice(ctx, now, deadline, c.hoursNeeded(now))
+
+	return mode, reason, errors.Join(calErr, err)
+}
+
+// deadline returns the next charge deadline: weekly days plus calendar
+// overrides. Without (working) calendar it falls back to the weekly days.
+func (c *controller) deadline(ctx context.Context, now time.Time) (time.Time, bool, error) {
+	var (
+		overrides dayOverrides
+		err       error
+	)
+
+	if c.calendar != nil {
+		overrides, err = c.calendar.Overrides(ctx, now)
+		err = errors.Join(err, c.track(ctx, now, &c.caldDown, "Agenda", caldDownAfter, err))
+	}
+
+	deadline, ok := nextDeadline(now, c.rules.Days, c.rules.ReadyBy, overrides)
+
+	return deadline, ok, err
 }
 
 // decideByPrice charges in the cheapest slots that still make the deadline.

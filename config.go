@@ -15,6 +15,7 @@ var errConfig = errors.New("invalid config")
 // config is the contents of config.toml.
 type config struct {
 	AlphaESS *alphaESSConfig `toml:"alphaess"` // optional: measures battery use while charging
+	Cald     *caldConfig     `toml:"cald"`     // optional: extra / skipped charge days
 	MySkoda  *mySkodaConfig  `toml:"myskoda"`  // optional: car battery level
 	Pushover *pushoverConfig `toml:"pushover"` // optional: notifications
 	Zappi    zappiConfig     `toml:"zappi"`
@@ -33,6 +34,13 @@ type alphaESSConfig struct {
 	AppID  string `toml:"app_id"`
 	Secret string `toml:"secret"`
 	SN     string `toml:"sn"`
+}
+
+// caldConfig points at a cald-web calendar (tags [auto] / [geenauto]).
+type caldConfig struct {
+	URL  string `toml:"url"`
+	User string `toml:"user"`
+	Pass string `toml:"pass"`
 }
 
 // mySkodaConfig holds the MySkoda login.
@@ -119,6 +127,10 @@ func (c *config) validate() error {
 		need("alphaess", "app_id", c.AlphaESS.AppID)
 		need("alphaess", "secret", c.AlphaESS.Secret)
 		need("alphaess", "sn", c.AlphaESS.SN)
+	}
+
+	if c.Cald != nil {
+		need("cald", "url", c.Cald.URL)
 	}
 
 	if c.MySkoda != nil {
